@@ -7,6 +7,7 @@ use sdl2::rect::Point;
 use std::cmp;
 use core::f32::{consts::PI, INFINITY};
 const RESOLUTION: (u32, u32) = (800, 600);
+use std::time::Instant;
 
 #[derive(Debug, PartialEq)]
 struct Face {
@@ -440,4 +441,47 @@ fn main() {
         }
         canvas.present();
     }
+    let mut last_frame_time = Instant::now();
+    let current_time = Instant::now();
+    let elapsed_time = current_time.duration_since(last_frame_time);
+    let fps = 1.0 / elapsed_time.as_secs_f32();
+    last_frame_time = current_time;
+    println!("FPS: {:.2}", fps);
+    'running: loop {
+        canvas.set_draw_color(Color::RGB(0, 0, 0));
+        canvas.clear();
+        canvas.set_draw_color(Color::RGB(244, 0, 0));
+        i = i+0.1;
+        let eye    = Vector::from_xyz(i, -6.,  0.);
+        let target = Vector::from_xyz(0_f32, 0.,  0.);
+        let up     = Vector::from_xyz(0_f32, 0., -1.);
+        let view   = Matrix::look_at(&eye, &target, &up);
+        let proj   = Matrix::perspective(1., PI/2., 5., INFINITY);
+        let view_proj = &proj.dot(&view);
+        for _ in 0..num_objects {
+            object
+                .downcast_ref::<Object1>()
+                .map(|o| o.render(&mut canvas, &view_proj))
+                .or_else(|| {
+                    object
+                        .downcast_ref::<Object2>()
+                        .map(|o| o.render(&mut canvas, &view_proj))
+                });
+        }
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit {..} | Event::KeyDown {..} => { break 'running },
+                _ => {}
+            }
+        }
+        canvas.present();
+        
+        // FPS counter
+        let current_time = Instant::now();
+        let elapsed_time = current_time.duration_since(last_frame_time);
+        let fps = 1.0 / elapsed_time.as_secs_f32();
+        last_frame_time = current_time;
+        println!("FPS: {:.2}", fps);
+    }
+    
 }
