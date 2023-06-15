@@ -11,9 +11,7 @@
  
 ## Screenshots
 
-![Cube](https://cdn.discordapp.com/attachments/1045463014876397638/1100865694469468160/image_1.png)
-
-![Cube with a frame](https://cdn.discordapp.com/attachments/1045463014876397638/1100865705366261790/image.png)
+![Triangle](https://cdn.discordapp.com/attachments/1034821036950167613/1118879034273710151/image.png)
 
 
 ## Run Locally
