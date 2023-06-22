@@ -374,14 +374,16 @@ fn screen(v: &Vector) -> Point {
 mod objects;
 use crate::objects::cube::Object1;
 use crate::objects::pyramid::Object2;
+use crate::objects::sphere::Object3;
 
 fn main() {
-    let mut input = String::new();
+    let mut input: String = String::new();
     println!("Please enter the object you want to render:");
     io::stdin().read_line(&mut input).expect("Failed to read input.");
     let object = match input.trim() {
         "cube" => Box::new(Object1::cube()) as Box<dyn Any>,
         "pyramid" => Box::new(Object2::pyramid()) as Box<dyn Any>,
+        "sphere" => Box::new(Object3::sphere()) as Box<dyn Any>,
         _ => {
             eprintln!("Invalid input. Please enter a valid object");
             return;
@@ -434,8 +436,14 @@ fn main() {
                     object
                         .downcast_ref::<Object2>()
                         .map(|o| o.render(&mut canvas, &view_proj))
+                })
+                .or_else(|| {
+                    object
+                        .downcast_ref::<Object3>()
+                        .map(|o| o.render(&mut canvas, &view_proj))
                 });
         }
+        
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} | Event::KeyDown {..} => { break 'running },
