@@ -15,23 +15,28 @@ impl Object2 {
     pub fn pyramid() -> Object2 {
         Object2 {
             vectors: vec![
-                Vector::from_xyz( 0.,  1., 0.),
-                Vector::from_xyz(-1., -1., 1.),
-                Vector::from_xyz( 1., -1., 1.),
-                Vector::from_xyz( 1., -1., -1.),
-                Vector::from_xyz(-1., -1., -1.)
+                Vector::from_xyz(-1.0, -1.0, 0.0), // Bottom-left point
+                Vector::from_xyz(-1.0, 1.0, 0.0),  // Top-left point
+                Vector::from_xyz(0.0, 0.0, 1.0),   // Top point
+                Vector::from_xyz(1.0, 1.0, 0.0),   // Top-right point
+                Vector::from_xyz(1.0, -1.0, 0.0),  // Bottom-right point
             ],
             colors: vec![
-                Color::RGB(255, 0, 0),
-                Color::RGB(0, 255, 0),
-                Color::RGB(0, 0, 255),
-                Color::RGB(255, 255, 0),
-                Color::RGB(255, 0, 255)
+                Color::RGB(255, 0, 0),   // Bottom-left point color
+                Color::RGB(0, 255, 0),   // Top-left point color
+                Color::RGB(0, 0, 255),   // Top point color
+                Color::RGB(255, 255, 0), // Top-right point color
+                Color::RGB(255, 255, 255), // Bottom-right point color
             ],
             faces: vec![
-                (0, 1, 2), (0, 2, 3),
-                (0, 3, 4), (0, 4, 1),
-                (1, 2, 3), (3, 4, 1)
+                // Left face
+                (0, 1, 2),
+                // Front face
+                (1, 3, 2),
+                // Right face
+                (3, 4, 2),
+                // Bottom face
+                (4, 0, 2),
             ]
         }
     }
