@@ -1,6 +1,7 @@
 extern crate sdl2;
 use std::any::Any;
 use std::io;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::{Color};
 use sdl2::event::Event;
 use sdl2::rect::Point;
@@ -167,7 +168,7 @@ impl Vector {
 
 #[derive(Debug, PartialEq)]
 pub struct Matrix {
-    indices: [f32; 16]
+    indices: [f32; 16],
 }
 
 fn det2(m: [f32; 4]) -> f32 {
@@ -245,6 +246,61 @@ impl Matrix {
         }
     }
          
+    pub fn rotate_x(&self, angle: f32) -> Matrix {
+        let sin_theta = angle.sin();
+        let cos_theta = angle.cos();
+
+        let m = self.indices;
+
+        let a = m[0];
+        let b = m[1];
+        let c = m[2];
+        let d = m[3];
+
+        let e = m[4] * cos_theta - m[8] * sin_theta;
+        let f = m[5] * cos_theta - m[9] * sin_theta;
+        let g = m[6] * cos_theta - m[10] * sin_theta;
+        let h = m[7] * cos_theta - m[11] * sin_theta;
+
+        let i = m[8] * cos_theta + m[4] * sin_theta;
+        let j = m[9] * cos_theta + m[5] * sin_theta;
+        let k = m[10] * cos_theta + m[6] * sin_theta;
+        let l = m[11] * cos_theta + m[7] * sin_theta;
+
+        Matrix {
+            indices: [
+                a, b, c, d, e, f, g, h, i, j, k, l, m[12], m[13], m[14], m[15],
+            ],
+        }
+    }
+
+    pub fn rotate_y(&self, angle: f32) -> Matrix {
+        let sin_theta = angle.sin();
+        let cos_theta = angle.cos();
+
+        let m = self.indices;
+
+        let a = m[0] * cos_theta + m[8] * sin_theta;
+        let b = m[1] * cos_theta + m[9] * sin_theta;
+        let c = m[2] * cos_theta + m[10] * sin_theta;
+        let d = m[3] * cos_theta + m[11] * sin_theta;
+
+        let e = m[4];
+        let f = m[5];
+        let g = m[6];
+        let h = m[7];
+
+        let i = m[8] * cos_theta - m[0] * sin_theta;
+        let j = m[9] * cos_theta - m[1] * sin_theta;
+        let k = m[10] * cos_theta - m[2] * sin_theta;
+        let l = m[11] * cos_theta - m[3] * sin_theta;
+
+        Matrix {
+            indices: [
+                a, b, c, d, e, f, g, h, i, j, k, l, m[12], m[13], m[14], m[15],
+            ],
+        }
+    }
     pub fn perspective(aspect: f32, y_fov: f32, z_near: f32, z_far: f32) -> Matrix {
         let f = 1_f32 / (y_fov / 2_f32).tan();
         let a = f / aspect;
@@ -365,6 +421,85 @@ impl Matrix {
         det4(self.indices)
     }
 }
+struct Camera {
+    position: Vector,
+    target: Vector,
+    up: Vector,
+}
+
+impl Camera {
+    fn new(position: Vector, target: Vector, up: Vector) -> Camera {
+        Camera {
+            position,
+            target,
+            up,
+        }
+    }
+
+    fn move_forward(&mut self, distance: f32) {
+        let direction = self.target.min(&self.position).normalize();
+        let displacement = direction.scale(distance);
+        self.position = self.position.add(&displacement);
+        self.target = self.target.add(&displacement);
+    }
+
+    fn move_backward(&mut self, distance: f32) {
+        let direction = self.target.min(&self.position).normalize();
+        let displacement = direction.scale(-distance);
+        self.position = self.position.add(&displacement);
+        self.target = self.target.add(&displacement);
+    }
+
+    fn move_left(&mut self, distance: f32) {
+        let right = self.target.cross(&self.up).normalize();
+        let displacement = right.scale(-distance);
+        self.position = self.position.add(&displacement);
+        self.target = self.target.add(&displacement);
+    }
+
+    fn move_right(&mut self, distance: f32) {
+        let right = self.target.cross(&self.up).normalize();
+        let displacement = right.scale(distance);
+        self.position = self.position.add(&displacement);
+        self.target = self.target.add(&displacement);
+    }
+
+    fn rotate_up(&mut self, angle: f32) {
+        let rotation_matrix = Matrix::identity()
+            .rotate_x(angle);
+        let direction = self.target.min(&self.position);
+        self.target = self.position.add(&rotation_matrix.project(&direction));
+        self.up = rotation_matrix.project(&self.up);
+    }
+
+    fn rotate_down(&mut self, angle: f32) {
+        let rotation_matrix = Matrix::identity()
+            .rotate_x(-angle);
+        let direction = self.target.min(&self.position);
+        self.target = self.position.add(&rotation_matrix.project(&direction));
+        self.up = rotation_matrix.project(&self.up);
+    }
+
+    fn rotate_left(&mut self, angle: f32) {
+        let rotation_matrix = Matrix::identity()
+            .rotate_y(angle);
+        let direction = self.target.min(&self.position);
+        self.target = self.position.add(&rotation_matrix.project(&direction));
+        self.up = rotation_matrix.project(&self.up);
+    }
+
+    fn rotate_right(&mut self, angle: f32) {
+        let rotation_matrix = Matrix::identity()
+            .rotate_y(-angle);
+        let direction = self.target.min(&self.position);
+        self.target = self.position.add(&rotation_matrix.project(&direction));
+        self.up = rotation_matrix.project(&self.up);
+    }
+
+    fn view_matrix(&self) -> Matrix {
+        Matrix::look_at(&self.position, &self.target, &self.up)
+    }
+}
 
 fn screen(v: &Vector) -> Point {
     let x = (v.x+1.) / 2. * (RESOLUTION.0 as f32);
@@ -420,36 +555,46 @@ fn main() {
         canvas.clear();
         canvas.set_draw_color(Color::RGB(244, 0, 0));
 
-        i = i + 0.1;
-        let eye = Vector::from_xyz(i, -6., 0.);
-        let target = Vector::from_xyz(0_f32, 0., 0.);
-        let up = Vector::from_xyz(0_f32, 0., -1.);
-        let view = Matrix::look_at(&eye, &target, &up);
+        // i = i + 0.1;
+        let mut camera = Camera::new(Vector::from_xyz(i, -6., 0.), Vector::from_xyz(0., 0., 0.), Vector::from_xyz(0., 0., -1.));
+        let view = camera.view_matrix();
         let proj = Matrix::perspective(1., PI / 2., 5., INFINITY);
         let view_proj = &proj.dot(&view);
-
+        
         for _ in 0..num_objects {
-            object
-                .downcast_ref::<Object1>()
-                .map(|o| o.render(&mut canvas, &view_proj))
-                .or_else(|| {
-                    object
-                        .downcast_ref::<Object2>()
-                        .map(|o| o.render(&mut canvas, &view_proj))
-                })
-                .or_else(|| {
-                    object
-                        .downcast_ref::<Object3>()
-                        .map(|o| o.render(&mut canvas, &view_proj))
-                });
+            if let Some(object3) = object.downcast_ref::<Object3>() {
+                object3.render(&mut canvas, &view_proj);
+            } else if let Some(object2) = object.downcast_ref::<Object2>() {
+                object2.render(&mut canvas, &view_proj);
+            } else if let Some(object1) = object.downcast_ref::<Object1>() {
+                object1.render(&mut canvas, &view_proj);
+            }
         }
         
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit {..} | Event::KeyDown {..} => { break 'running },
+                Event::Quit { .. } => {
+                    break 'running;
+                }
+                Event::KeyDown { keycode: Some(keycode), .. } => {
+                    match keycode {
+                        Keycode::W => camera.move_forward(0.9),
+                        Keycode::S => camera.move_backward(0.9),
+                        Keycode::A => camera.move_left(0.9),
+                        Keycode::D => camera.move_right(0.9),
+                        Keycode::Up => camera.move_forward(0.9),
+                        Keycode::Down => camera.move_backward(0.9),
+                        Keycode::Left => camera.move_left(0.9),
+                        Keycode::Right => camera.move_right(0.9),
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
+        
+        
+        
         canvas.present();
         
         // FPS counter
