@@ -1,7 +1,7 @@
 extern crate sdl2;
 use std::any::Any;
 use std::io;
-use sdl2::keyboard::{Keycode, Scancode};
+use sdl2::keyboard::{Keycode};
 use sdl2::pixels::{Color};
 use sdl2::event::Event;
 use sdl2::rect::Point;
@@ -464,38 +464,6 @@ impl Camera {
         self.target = self.target.add(&displacement);
     }
 
-    fn rotate_up(&mut self, angle: f32) {
-        let rotation_matrix = Matrix::identity()
-            .rotate_x(angle);
-        let direction = self.target.min(&self.position);
-        self.target = self.position.add(&rotation_matrix.project(&direction));
-        self.up = rotation_matrix.project(&self.up);
-    }
-
-    fn rotate_down(&mut self, angle: f32) {
-        let rotation_matrix = Matrix::identity()
-            .rotate_x(-angle);
-        let direction = self.target.min(&self.position);
-        self.target = self.position.add(&rotation_matrix.project(&direction));
-        self.up = rotation_matrix.project(&self.up);
-    }
-
-    fn rotate_left(&mut self, angle: f32) {
-        let rotation_matrix = Matrix::identity()
-            .rotate_y(angle);
-        let direction = self.target.min(&self.position);
-        self.target = self.position.add(&rotation_matrix.project(&direction));
-        self.up = rotation_matrix.project(&self.up);
-    }
-
-    fn rotate_right(&mut self, angle: f32) {
-        let rotation_matrix = Matrix::identity()
-            .rotate_y(-angle);
-        let direction = self.target.min(&self.position);
-        self.target = self.position.add(&rotation_matrix.project(&direction));
-        self.up = rotation_matrix.project(&self.up);
-    }
-
     fn view_matrix(&self) -> Matrix {
         Matrix::look_at(&self.position, &self.target, &self.up)
     }
@@ -549,59 +517,54 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0_f32;
-    let mut last_frame_time = Instant::now();
-    'running: loop {
-        canvas.set_draw_color(Color::RGB(0, 0, 0));
-        canvas.clear();
-        canvas.set_draw_color(Color::RGB(244, 0, 0));
+let mut last_frame_time = Instant::now();
+'running: loop {
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    canvas.clear();
+    canvas.set_draw_color(Color::RGB(244, 0, 0));
 
-        // i = i + 0.1;
-        let mut camera = Camera::new(Vector::from_xyz(i, -6., 0.), Vector::from_xyz(0., 0., 0.), Vector::from_xyz(0., 0., -1.));
-        let view = camera.view_matrix();
-        let proj = Matrix::perspective(1., PI / 2., 5., INFINITY);
-        let view_proj = &proj.dot(&view);
-        
-        for _ in 0..num_objects {
-            if let Some(object3) = object.downcast_ref::<Object3>() {
-                object3.render(&mut canvas, &view_proj);
-            } else if let Some(object2) = object.downcast_ref::<Object2>() {
-                object2.render(&mut canvas, &view_proj);
-            } else if let Some(object1) = object.downcast_ref::<Object1>() {
-                object1.render(&mut canvas, &view_proj);
+    let mut camera = Camera::new(Vector::from_xyz(i, -6., 0.), Vector::from_xyz(0., 0., 0.), Vector::from_xyz(0., 0., -1.));
+    let view = camera.view_matrix();
+    let proj = Matrix::perspective(1., PI / 2., 5., INFINITY);
+    let view_proj = &proj.dot(&view);
+
+    for event in event_pump.poll_iter() {
+        match event {
+            Event::Quit { .. } => {
+                break 'running;
             }
-        }
-        
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } => {
-                    break 'running;
+            Event::KeyDown { keycode: Some(keycode), .. } => {
+                match keycode {
+                    Keycode::W => camera.move_forward(0.9),
+                    Keycode::S => camera.move_backward(0.9),
+                    Keycode::A => camera.move_left(0.9),
+                    Keycode::D => camera.move_right(0.9),
+                    Keycode::Up => i += 0.1,
+                    Keycode::Down => i -= 0.1,
+                    _ => {}
                 }
-                Event::KeyDown { keycode: Some(keycode), .. } => {
-                    match keycode {
-                        Keycode::W => camera.move_forward(0.9),
-                        Keycode::S => camera.move_backward(0.9),
-                        Keycode::A => camera.move_left(0.9),
-                        Keycode::D => camera.move_right(0.9),
-                        Keycode::Up => camera.move_forward(0.9),
-                        Keycode::Down => camera.move_backward(0.9),
-                        Keycode::Left => camera.move_left(0.9),
-                        Keycode::Right => camera.move_right(0.9),
-                        _ => {}
-                    }
-                }
-                _ => {}
             }
+            _ => {}
         }
-        
-        
-        
-        canvas.present();
-        
-        // FPS counter
-        let current_time = Instant::now();
-        let elapsed_time = current_time.duration_since(last_frame_time);
-        let fps = 1.0 / elapsed_time.as_secs_f32();
-        last_frame_time = current_time;
-        println!("FPS: {:.2}", fps);
     }
+
+    for _ in 0..num_objects {
+        if let Some(object3) = object.downcast_ref::<Object3>() {
+            object3.render(&mut canvas, &view_proj);
+        } else if let Some(object2) = object.downcast_ref::<Object2>() {
+            object2.render(&mut canvas, &view_proj);
+        } else if let Some(object1) = object.downcast_ref::<Object1>() {
+            object1.render(&mut canvas, &view_proj);
+        }
+    }
+
+    canvas.present();
+
+    // FPS counter
+    let current_time = Instant::now();
+    let elapsed_time = current_time.duration_since(last_frame_time);
+    let fps = 1.0 / elapsed_time.as_secs_f32();
+    last_frame_time = current_time;
+    println!("FPS: {:.2}", fps);
+}
 }
