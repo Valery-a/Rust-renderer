@@ -108,3 +108,195 @@ pub type Vec2<T> = Vec<T,U2>;
 pub type Vec3<T> = Vec<T,U3>;
 pub type Mat3<T> = Mat<T, U3, U3>;
 pub type Mat4<T> = Mat<T, U4, U4>;
+
+
+impl<   T : Add<Output=T> + Value,
+    N : Clone + Unsigned,
+    M : Clone + Unsigned>
+
+AddAssign<Mat<T,N,M>>
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+
+    fn add_assign(&mut self, other : Mat<T,N,M>){
+        *self = Mat{ar : GenericArray::<T, Prod<N, M>>::
+        generate(&|i| self.get(i) + other.get(i))}
+    }
+
+}
+
+impl<   T : Mul<Output=T> + Value,
+    N : Clone + Unsigned,
+    M : Clone + Unsigned>
+
+MulAssign<T>
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+
+    fn mul_assign(&mut self, k : T){
+        *self = Mat{ar : GenericArray::<T, Prod<N, M>>::
+        generate(&|i| self.get(i) * k)}
+    }
+
+}
+
+impl<   T : Sub<Output=T> + Value,
+    N : Clone + Unsigned,
+    M : Clone + Unsigned>
+
+SubAssign<Mat<T,N,M>>
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+
+    fn sub_assign(&mut self, other : Mat<T,N,M>){
+        *self = Mat{ar : GenericArray::<T, Prod<N, M>>::
+        generate(&|i| self.get(i) - other.get(i))}
+    }
+
+}
+
+impl<   T : Neg<Output=T> + Value,
+    N : Clone + Unsigned,
+    M : Clone + Unsigned>
+
+Neg
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+    type Output = Mat<T,N,M>;
+
+    fn neg(self) -> Mat<T,N,M>{
+        Mat{ar : GenericArray::<T, Prod<N, M>>::
+        generate(&|i| -self.get(i))}
+    }
+
+}
+
+impl<   T : Mul<Output=T> + Value,
+    N : Clone + Unsigned,
+    M : Clone + Unsigned>
+
+Mul<T>
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+    type Output = Mat<T,N,M>;
+
+    fn mul(self, k : T) -> Mat<T,N,M>{
+        Mat{ar : GenericArray::<T, Prod<N, M>>::
+        generate(&|i| self.get(i) * k)}
+    }
+
+}
+
+impl<
+        T : Add<Output=T> + Value + Mul<Output=T> + AdditiveMonoid,
+        N : Unsigned + Clone,
+        M : Unsigned + Clone,
+        L : Unsigned + Clone>
+
+Mul<Mat<T,M,L>>
+
+for Mat<T,N,M> where N : Mul<M>, N : Mul<L>, M : Mul<L>, Prod<N,M> : ArrayLength<T>, Prod<M, L> : ArrayLength<T>, Prod<N, L> : ArrayLength<T>{
+
+    type Output = Mat<T,N,L>;
+
+    fn mul(self, other : Mat<T,M,L>) -> Mat<T,N,L>{
+
+        let mut c = Mat::<T, N, L>::empty();
+
+        for i in 0..N::to_usize(){
+            for j in 0..L::to_usize(){
+                c[(i,j)] = T::identity();
+                for k in 0..M::to_usize(){
+                    c[(i,j)] += self[(i,k)] * other[(k,j)];
+                }
+            }
+        }
+
+        c
+    }
+
+}
+
+impl<A : Value + Identity<Additive>, N : Unsigned + Clone, M : Unsigned + Clone> Mat<A, N, M> where N : Mul<M>, Prod<N, M> : ArrayLength<A>, M : Mul<N>, Prod<M, N> : ArrayLength<A>{
+    pub fn transpose(&self) -> Mat<A, M, N>{
+        let mut r = Mat::<A, M, N>::empty();
+        for i in 0..N::to_usize(){
+            for j in 0..M::to_usize(){
+                r[(j, i)] =  self[(i, j)];
+            }
+        }
+
+        r
+    }
+}
+
+impl<   T : Sub<Output=T> + Value,
+        N : Clone + Unsigned,
+        M : Clone + Unsigned>
+
+Sub<Mat<T,N,M>>
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+        type Output = Mat<T,N,M>;
+
+        fn sub(self, other : Mat<T,N,M>) -> Mat<T,N,M>{
+                Mat{ar : GenericArray::<T, Prod<N, M>>::
+                generate(&|i| self.get(i) - other.get(i))}
+        }
+
+}
+
+pub fn dot<T : Value + Identity<Additive> + Mul<Output=T> + AddAssign, N : Unsigned + Clone + Mul<U1>>(that : Vec<T,N>, other : Vec<T,N>) -> T where N : Mul<U1>, Prod<N,U1> : ArrayLength<T>,{
+        let mut res = T::identity();
+        for i in 0..<N as Unsigned>::to_usize(){
+                res += that.ar[i] * other.ar[i];
+        }
+
+        res
+}
+
+
+impl<
+    T : Mul<Output=T> + AddAssign + AbstractMonoid<Additive> + Value,
+    N : Clone + Unsigned>
+
+Vec<T,N> where N : Mul<U1> + Unsigned, Prod<N,U1> : ArrayLength<T>{
+
+
+    #[inline]
+    pub fn dot(self, other : Vec<T,N>) -> T{
+        dot(self, other)
+    }
+
+
+}
+
+impl<
+    T : Real,
+    N : Clone + Unsigned>
+
+Vec<T,N> where N : Mul<U1> + Unsigned, Prod<N,U1> : ArrayLength<T>, GenericArray<T, Prod<N, U1>> : Copy{
+
+    #[inline]
+    pub fn norm(self) -> T{
+        T::sqrt(dot(self, self))
+    }
+
+    #[inline]
+    pub fn normalize(self) -> Vec<T, N>{
+        self * (T::one() / self.norm())
+    }
+
+}
+
+macro_rules! vec3 {
+    ( $x:expr , $y:expr, $z:expr ) => {
+        {
+            Vec3::new($x, $y, $z)
+        }
+    };
+}
