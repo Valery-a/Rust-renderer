@@ -7,16 +7,10 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-anyhow = "1.0"
-bytemuck = { version = "1.12", features = [ "derive" ] }
-cfg-if = "1"
-cgmath = "0.18"
-env_logger = "0.10"
-pollster = "0.3"
-log = "0.4"
-tobj = { version = "3.2", features = ["async"]}
-wgpu = "0.16"
-winit = "0.28"
+typenum = "1.9.0"
+alga = "0.5.2"
+glfw = "*"
+libc = "0.2.0"
 glad-gl = { path = "./glad-gl" }
 glad-vulkan = { path = "./glad-vulkan" }
 
