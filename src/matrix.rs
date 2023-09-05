@@ -48,6 +48,8 @@ where
 
 macro_rules! coords_impl(
     ($T: ident; $($comps: ident),*) => {
+        /// Data structure used to provide access to matrix and vector coordinates with the dot
+        /// notation, e.g., `v.x` is the same as `v[0]` for a vector.
         #[repr(C)]
         #[derive(Eq, PartialEq, Clone, Hash, Debug, Copy)]
         pub struct $T<N : Value> {
@@ -109,6 +111,179 @@ pub type Vec3<T> = Vec<T,U3>;
 pub type Mat3<T> = Mat<T, U3, U3>;
 pub type Mat4<T> = Mat<T, U4, U4>;
 
+impl <T : Value, N : Clone + Unsigned, M : Clone + Unsigned> Mat<T,N,M> where
+    N : Mul<M>,
+    Prod<N,M> : ArrayLength<T>,{
+
+
+    pub fn as_slice(&self) -> &[T]{
+        self.ar.as_slice()
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut[T]{self.ar.as_mut_slice()}
+}
+
+impl <T : Value + Identity<Additive>, N : Clone + Unsigned> Vec<T,N> where
+    N : Mul<U1>,
+    Prod<N,U1> : ArrayLength<T>,{}
+
+impl <T : Value + Identity<Additive>, N : Clone + Unsigned, M : Clone + Unsigned> Mat<T,N,M> where
+    N : Mul<M>,
+    Prod<N,M> : ArrayLength<T>,{
+
+
+    pub fn empty() -> Mat<T,N,M>{
+        let ar = GenericArray::generate(|_| T::identity());
+        Mat{ar}
+    }
+
+}
+
+impl <T : Value + Identity<Additive> + Identity<Multiplicative>, N : Unsigned + Clone> Mat<T,N,N> where
+    N : Mul<N>,
+    Prod<N,N> : ArrayLength<T>,{
+
+
+    pub fn identity() -> Mat<T,N,N>{
+        let mut m = Mat::<T, N, N>::empty();
+        for i in 0..N::to_usize(){
+            m[(i,i)] = T::id(Multiplicative)
+        }
+        m
+    }
+
+}
+
+impl<T : Value, U : Unsigned + Clone> Vec<T, U> where
+    U : Mul<U1>,
+    Prod<U, U1> : ArrayLength<T>,
+    U : ArrayLength<T>,
+{}
+
+impl<T : Value> Vec2<T>{
+    pub fn new(x : T, y : T) -> Vec2<T>{
+        Vec::<T, U2>{ar : GenericArray::<T, U2>::clone_from_slice(&[x,y])}
+    }
+
+}
+
+impl<T : Value> Vec3<T>{
+    pub fn new(x : T, y : T, z : T) -> Vec3<T>{
+        Vec::<T, U3>{ar : GenericArray::<T, U3>::clone_from_slice(&[x,y,z])}
+    }
+
+}
+
+impl<T : Value> Mat3<T>{
+    pub fn new(m11 : T, m12 : T, m13 : T,
+               m21 : T, m22 : T, m23 : T,
+               m31 : T, m32 : T, m33 : T) -> Mat3<T>{
+        Mat::<T, U3, U3>{ar : GenericArray::<T, U9>::clone_from_slice(&[m11, m12, m13,
+                                                                         m21, m22, m23,
+                                                                         m31, m32, m33])}
+    }
+
+}
+
+impl<T : Value> Mat4<T>{
+    pub fn new(m11 : T, m12 : T, m13 : T, m14 : T,
+               m21 : T, m22 : T, m23 : T, m24 : T,
+               m31 : T, m32 : T, m33 : T, m34 : T,
+               m41 : T, m42 : T, m43 : T, m44 : T) -> Mat4<T>{
+        Mat::<T, U4, U4>{ar : GenericArray::<T, U16>::clone_from_slice(&[m11, m12, m13, m14,
+                                                                              m21, m22, m23, m24,
+                                                                              m31, m32, m33, m34,
+                                                                              m41, m42, m43, m44])}
+    }
+
+}
+
+
+impl<T : Value + Mul<Output=T> + Add<Output=T> + Sub<Output=T>> Vec3<T>{
+
+        #[inline]
+        pub fn cross(self, other : Vec3<T>) -> Vec3<T>{
+                cross(self, other)
+        }
+}
+
+impl <T : Value, N : Unsigned + Clone, M : Unsigned + Clone> Mat<T,N,M> where
+    N : Mul<M>,
+    Prod<N,M> : ArrayLength<T>,{
+
+
+        pub fn get(&self, i : usize) -> T{
+                self.ar[i]
+        }
+}
+
+impl<T : Value,N : Clone + Unsigned> Index<usize> for Vec<T,N> where
+    N : Mul<U1>,
+    Prod<N,U1> : ArrayLength<T>,{
+
+        type Output = T;
+
+        fn index(&self, i : usize) -> &T{
+                &self.ar[i]
+        }
+
+}
+
+
+impl<T : Value,N : Clone + Unsigned> IndexMut<usize> for Vec<T,N> where
+    N : Mul<U1>,
+    Prod<N,U1> : ArrayLength<T>,{
+
+
+        fn index_mut(&mut self, i : usize) -> &mut T{
+                &mut self.ar[i]
+        }
+
+}
+
+impl<T : Value,N,M> Index<(usize, usize)> for Mat<T,N,M> where
+    N : Unsigned + Clone,
+    M : Unsigned + Clone,
+    N : Mul<M>,
+    Prod<N,M> : ArrayLength<T>,{
+
+        type Output = T;
+
+        fn index(&self, i : (usize, usize)) -> &T{
+                &self.ar[i.0 * M::to_usize() + i.1]
+        }
+
+}
+
+impl<T : Value,N,M> IndexMut<(usize, usize)> for Mat<T,N,M> where
+    N : Unsigned + Clone,
+    M : Unsigned + Clone,
+    N : Mul<M>,
+    Prod<N,M> : ArrayLength<T>,{
+
+
+        fn index_mut(&mut self, i : (usize, usize)) -> &mut T{
+                &mut self.ar[i.0 * M::to_usize() + i.1]
+        }
+
+}
+
+impl<   T : Add<Output=T> + Value,
+        N : Clone + Unsigned,
+        M : Clone + Unsigned>
+
+Add<Mat<T,N,M>>
+
+for Mat<T,N,M> where N : Mul<M>, Prod<N,M> : ArrayLength<T>{
+
+    type Output = Mat<T,N,M>;
+
+    fn add(self, other : Mat<T,N,M>) -> Mat<T,N,M>{
+            Mat{ar : GenericArray::<T, Prod<N, M>>::
+            generate(&|i| self.get(i) + other.get(i))}
+    }
+
+}
 
 impl<   T : Add<Output=T> + Value,
     N : Clone + Unsigned,
@@ -259,6 +434,9 @@ pub fn dot<T : Value + Identity<Additive> + Mul<Output=T> + AddAssign, N : Unsig
         res
 }
 
+pub fn cross<T : Value + Mul<Output=T> + Add<Output=T> + Sub<Output=T>>(that : Vec3<T>, other : Vec3<T>) -> Vec3<T>{
+        Vec3::new(that.y * other.z - other.y * that.z, other.x * that.z - that.x * other.z, that.x * other.y - other.x * that.y)
+}
 
 impl<
     T : Mul<Output=T> + AddAssign + AbstractMonoid<Additive> + Value,
