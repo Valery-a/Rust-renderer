@@ -35,6 +35,88 @@ use matrix::*;
 use glad_gl::gl;
 
 
+fn handle_input(_glfw: &mut glfw::Glfw, win: &mut glfw::Window, dt_ns: u64, camera: &mut Cam) {
+    if win.get_key(glfw::Key::Escape) == glfw::Action::Press{
+        win.set_should_close(true);
+    }else{
+        if win.get_key(glfw::Key::Tab) == glfw::Action::Press{
+            //debug
+
+            let (w, h) = win.get_size();
+
+            println!("[debug] window size: ({}, {})", w, h);
+
+        }
+    }
+    let dt_s : f32 = dt_ns as f32 / 1000000000.0;
+
+    if win.get_key(glfw::Key::W) == glfw::Action::Press{
+        camera.pos += camera.look * dt_s as f32;
+
+    }
+
+    if win.get_key(glfw::Key::S) == glfw::Action::Press{
+        camera.pos -= camera.look * dt_s as f32;
+    }
+
+    if win.get_key(glfw::Key::A) == glfw::Action::Press{
+        let right = camera.look.cross(camera.up);
+
+        camera.pos -= right * dt_s as f32;
+    }
+
+    if win.get_key(glfw::Key::D) == glfw::Action::Press{
+        let right = camera.look.cross(camera.up);
+
+        camera.pos += right * dt_s as f32;
+    }
+
+    if win.get_key(glfw::Key::Space) == glfw::Action::Press{
+
+        camera.pos += camera.up * dt_s as f32;
+    }
+
+    if win.get_key(glfw::Key::LeftShift) == glfw::Action::Press{
+
+        camera.pos -= camera.up * dt_s as f32;
+    }
+
+    if win.get_key(glfw::Key::Left) == glfw::Action::Press{
+
+        let mat = rot_mat3(camera.up, std::f32::consts::PI * dt_s / 2.0);
+        camera.look = (mat * camera.look).normalize();
+    }
+    if win.get_key(glfw::Key::Right) == glfw::Action::Press{
+
+        let mat = rot_mat3(camera.up, -std::f32::consts::PI * dt_s / 2.0);
+        camera.look = (mat * camera.look).normalize();
+    }
+    if win.get_key(glfw::Key::Kp0) == glfw::Action::Press{
+
+        let mat = rot_mat3(camera.look, std::f32::consts::PI * dt_s / 2.0);
+        camera.up = (mat * camera.up).normalize();
+    }
+    if win.get_key(glfw::Key::KpDecimal) == glfw::Action::Press{
+
+        let mat = rot_mat3(camera.look, -std::f32::consts::PI * dt_s / 2.0);
+        camera.up = (mat * camera.up).normalize();
+    }
+    if win.get_key(glfw::Key::Up) == glfw::Action::Press{
+        let right = camera.look.cross(camera.up);
+        let mat = rot_mat3(right, std::f32::consts::PI * dt_s / 2.0);
+        camera.look = (mat * camera.look).normalize();
+        camera.up = (mat * camera.up).normalize();
+    }
+    if win.get_key(glfw::Key::Down) == glfw::Action::Press{
+        let right = camera.look.cross(camera.up);
+        let mat = rot_mat3(right, -std::f32::consts::PI * dt_s / 2.0);
+        camera.look = (mat * camera.look).normalize();
+        camera.up = (mat * camera.up).normalize();
+    }
+
+}
+
+
 fn run(){
     
 }
