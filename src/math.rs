@@ -71,3 +71,11 @@ pub struct Ray<T : Value>{
     pub start : Vec3<T>,
     pub dir : Vec3<T>
 }
+
+pub trait DenFn2<T : Value> : Fn(Vec2<T>) -> T + Copy{}
+pub trait DenFn3<T : Value> : Fn(Vec3<T>) -> T + Copy{}
+
+
+impl<T : Value, F : Fn(Vec2<T>) -> T + Copy> DenFn2<T> for F{}
+impl<T : Value, F : Fn(Vec3<T>) -> T + Copy> DenFn3<T> for F{}
+
