@@ -254,3 +254,112 @@ pub fn gl_bind_buffer(typee:u32, buf: u32){
         gl::BindBuffer(typee, buf);
     }
 }
+pub fn gl_buffer_data<T>(target: u32, num : usize, data: &[T], usage: u32){
+    unsafe{
+        gl::BufferData(target, std::mem::size_of::<T>() as isize * num as isize, std::mem::transmute(data.as_ptr()), usage);
+    }
+}
+
+pub fn gl_vertex_attrib_pointer(index: u32, size: u32, typee: u32, norm: bool, stride: u32, offset: u32){
+    unsafe{gl::VertexAttribPointer(index, size as i32, typee, if norm {gl::GL_TRUE} else {gl::GL_FALSE}, stride as i32, offset as *const c_void)}
+}
+
+pub fn gl_enable_vertex_attrib_array(index: u32){
+    unsafe{gl::EnableVertexAttribArray(index)}
+}
+
+pub fn gl_get_uniform_location(program: u32, name : &str) -> i32 {
+    let c_name = CString::new(name).expect("CString creation failed");
+    unsafe { gl::GetUniformLocation(program, c_name.as_ptr()) }
+}
+
+
+pub fn gl_attach_shader(prog: u32, shader: u32){
+    unsafe{gl::AttachShader(prog, shader)}
+}
+
+pub fn gl_link_program(prog: u32){
+    unsafe{gl::LinkProgram(prog)}
+}
+
+pub fn gl_validate_program(prog: u32){
+    unsafe{gl::ValidateProgram(prog)}
+}
+
+pub fn gl_get_shader_info_log(shader: u32) -> String{
+    unsafe{
+        let mut len: i32 = 0;
+        gl::GetShaderiv(shader, gl::GL_INFO_LOG_LENGTH, &mut len);
+        println!("info log len {}", len);
+        let mut info : Vec<u8> = Vec::with_capacity(len as usize);
+        let mut len_ret : i32 = 0;
+        gl::GetShaderInfoLog(shader, len, &mut len_ret, std::mem::transmute(info.as_mut_ptr()));
+       /* for i in info.iter(){
+            println!("{}", i)
+        }*/
+        info.set_len(len_ret as usize);
+        let string = String::from_utf8(info).unwrap();
+
+        string
+        
+    }
+}
+
+pub fn gl_get_shaderiv(id: u32, param: u32, res: *mut i32){
+    unsafe{gl::GetShaderiv(id, param, res)}
+}
+
+pub fn gl_compile_shader(id : u32){
+    unsafe{gl::CompileShader(id)}
+}
+
+pub fn gl_shader_source(shader: u32, source: &str){
+    unsafe{
+        let s = source.len() as i32;
+        gl::ShaderSource(shader, 1, &(source.as_ptr() as *const i8), &s as *const _);
+    }
+}
+
+pub fn gl_create_shader(typee: u32)->u32{
+    unsafe{gl::CreateShader(typee)}
+}
+
+pub fn gl_create_program()->u32{
+    unsafe{gl::CreateProgram()}
+}
+
+pub fn gl_viewport(x : u32, y : u32, w : u32, h : u32){
+    unsafe{
+        gl::Viewport(x as i32, y as i32, w as i32, h as i32);
+    }
+}
+
+pub fn gl_clear_color(r : f32, g : f32, b : f32, a : f32){
+    unsafe{
+        gl::ClearColor(r,g,b,a);
+    }
+}
+
+pub fn gl_clear(val : u32){
+    unsafe{
+        gl::Clear(val);
+    }
+}
+
+pub fn gl_get_string<'a>(val : u32) -> & 'a str{
+    unsafe{
+        CStr::from_ptr(gl::GetString(val) as *const i8).to_str().unwrap()
+    }
+}
+
+pub fn gl_dispatch_compute(num_groups_x : u32, num_groups_y : u32, num_groups_z : u32){
+    unsafe{
+        gl::DispatchCompute(num_groups_x, num_groups_y, num_groups_z);
+    }
+}
+
+pub fn gl_memory_barrier(bit : GLbitfield){
+    unsafe{
+        gl::MemoryBarrier(bit);
+    }
+}
