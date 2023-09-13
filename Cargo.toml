@@ -1,43 +1,32 @@
 [package]
-name = "bomba"
-version = "0.1.0"
-edition = "2021"
+name = "valder"
+version = "0.0.1"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+[features]
+vulkan = ["vulkano", "vulkano-shaders"]
 
 [dependencies]
+libc = "0.2.0"
+generic-array = "0.9.0"
+ansi_term = "0.10.2"
 typenum = "1.9.0"
 alga = "0.5.2"
+time = "0.1.39"
+rand = "0.4"
+noise = "0.5.1"
+lapack-sys = "0.12.1"
 glfw = "*"
-libc = "0.2.0"
+vulkano = {version = "0.13.0", optional = true}
+vulkano-shaders = {version = "0.13.0", optional = true}
 glad-gl = { path = "./glad-gl" }
 glad-vulkan = { path = "./glad-vulkan" }
+[target."cfg(target_os = \"macos\")".dependencies.accelerate-src]
+version = "0.3"
+[target."cfg(not(target_os = \"macos\"))".dependencies.openblas-src]
+version = "0.9"
+features = ["system"]
 
-[dependencies.image]
-version = "0.24"
-default-features = false
-features = ["png", "jpeg"]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-reqwest = { version = "0.11" }
-console_error_panic_hook = "0.1"
-console_log = "1.0"
-wgpu = { version = "0.16", features = ["webgl"]}
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = [
-    "Document",
-    "Window",
-    "Element",
-    "Location",
-]}
 
 [build-dependencies]
-anyhow = "1.0"
-fs_extra = "1.2"
-glob = "0.3"
+cc = "*"
 
-[[bin]]
-name = "bombaed"
-path = "src/main.rs"
