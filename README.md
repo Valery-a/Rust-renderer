@@ -82,3 +82,11 @@ into your cargo project, right next to your Cargo.toml.
 
 When you're shipping your game make sure to copy SDL2.dll to the same directory that your compiled exe is in, otherwise the game won't launch.
 ```
+
+# Dependencies
+* rust(cargo)
+* OpenGL >= 3.3.0 (detected automatically)
+* cmake
+* gfortran (no need for this on Mac)
+* xorg-dev package for linux with X11 window system
+* OpenBlas (or accelerate framework on Mac, distributed with the OS, no need to install anything)
