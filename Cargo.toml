@@ -1,32 +1,8 @@
 [package]
-name = "valder"
-version = "0.0.1"
+name = "CreateFile"
+version = "0.1.0"
+edition = "2021"
 
-[features]
-vulkan = ["vulkano", "vulkano-shaders"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libc = "0.2.0"
-generic-array = "0.9.0"
-ansi_term = "0.10.2"
-typenum = "1.9.0"
-alga = "0.5.2"
-time = "0.1.39"
-rand = "0.4"
-noise = "0.5.1"
-lapack-sys = "0.12.1"
-glfw = "*"
-vulkano = {version = "0.13.0", optional = true}
-vulkano-shaders = {version = "0.13.0", optional = true}
-glad-gl = { path = "./glad-gl" }
-glad-vulkan = { path = "./glad-vulkan" }
-[target."cfg(target_os = \"macos\")".dependencies.accelerate-src]
-version = "0.3"
-[target."cfg(not(target_os = \"macos\"))".dependencies.openblas-src]
-version = "0.9"
-features = ["system"]
-
-
-[build-dependencies]
-cc = "*"
-
