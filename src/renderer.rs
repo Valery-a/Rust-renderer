@@ -138,7 +138,7 @@ impl Renderer{
     }
 
     pub fn init(&mut self, start_width : u32, start_height : u32, title : &str){
-        let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+        let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
 
         glfw.window_hint(glfw::WindowHint::ContextVersionMajor(3));
         glfw.window_hint(glfw::WindowHint::ContextVersionMinor(3));
