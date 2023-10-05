@@ -38,3 +38,69 @@ impl CameraUniform {
         }
     }
 }
+
+pub struct Camera {
+    buffer: wgpu::Buffer,
+    pub viewport: PerspectiveFov<f64>,
+    pub transform: Matrix4<f64>,
+}
+impl Camera {
+    pub const fn layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+        wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }
+    }
+
+    pub fn entry(&self, binding: u32) -> wgpu::BindGroupEntry {
+        wgpu::BindGroupEntry {
+            binding,
+            resource: self.buffer.as_entire_binding(),
+        }
+    }
+
+    pub fn new(
+        device: &wgpu::Device,
+        viewport: PerspectiveFov<f64>,
+        transform: Matrix4<f64>,
+    ) -> Self {
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            contents: bytemuck::bytes_of(&CameraUniform::new(viewport, transform)),
+        });
+        Camera {
+            buffer,
+            viewport,
+            transform,
+        }
+    }
+
+    #[inline]
+    pub fn apply_transform(&mut self, delta: Matrix4<f64>) {
+        self.transform = self.transform * delta;
+    }
+
+    #[inline]
+    pub fn apply_rotation(&mut self, delta: Vector2<f64>) {
+        let z = delta.extend(1.0).normalize();
+        let x = Vector3::unit_y().cross(z).normalize();
+        let y = z.cross(x);
+        let matrix = Matrix4::from(Matrix3::from_cols(x, y, z).transpose());
+        self.apply_transform(matrix);
+    }
+
+    pub fn commit(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::bytes_of(&CameraUniform::new(self.viewport, self.transform)),
+        );
+    }
+}
