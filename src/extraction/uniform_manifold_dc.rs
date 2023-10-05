@@ -522,10 +522,10 @@ pub fn construct_grid(f : impl DenFn3<f32>, offset : Vec3<f32>, a : f32, size : 
         let mut cached_cell = HashMap::new();
 
         if vertices.len() == 1 { //render cells that contain more than 1 vertex
-            //add_cube_bounds_pos_color(render_debug_lines, bounds.clone(), Vec3::new(0.0, 1.0, 0.0));
+            add_cube_bounds_pos_color(render_debug_lines, bounds.clone(), Vec3::new(0.0, 1.0, 0.0));
         }
         if vertices.len() > 1 { //render cells that contain more than 1 vertex
-            //add_cube_bounds_pos_color(render_debug_lines, bounds.clone(), Vec3::new(1.0, 0.0, 0.0));
+            add_cube_bounds_pos_color(render_debug_lines, bounds.clone(), Vec3::new(1.0, 0.0, 0.0));
         }
 
         for vertex in vertices{
@@ -627,8 +627,8 @@ pub fn construct_grid(f : impl DenFn3<f32>, offset : Vec3<f32>, a : f32, size : 
                             let ru = load_cell_cached(&mut grid, x+1,y+1,z, &mut cache).get(&3).unwrap().clone();
                             let u = load_cell_cached(&mut grid, x,y+1,z, &mut cache).get(&1).unwrap().clone();
                             let normal = grid.get(x,y,z).hermite_data.get(&5).unwrap().normal;
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : r, p3 : ru}, Vec3::new(1.0, 1.0, 0.0), normal);
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : ru, p3 : u}, Vec3::new(1.0, 1.0, 0.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : r, p3 : ru}, Vec3::new(1.0, 0.0, 1.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : ru, p3 : u}, Vec3::new(1.0, 0.0, 1.0), normal);
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : r, p3 : ru});
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : ru, p3 : u});
                         },
@@ -640,8 +640,8 @@ pub fn construct_grid(f : impl DenFn3<f32>, offset : Vec3<f32>, a : f32, size : 
                             let fu = fu_.get(&0).unwrap().clone();
                             let u = load_cell_cached(&mut grid, x,y+1,z, &mut cache).get(&2).unwrap().clone();
                             let normal = grid.get(x,y,z).hermite_data.get(&6).unwrap().normal;
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : f, p3 : fu}, Vec3::new(1.0, 1.0, 0.0), normal);
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : fu, p3 : u}, Vec3::new(1.0, 1.0, 0.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : f, p3 : fu}, Vec3::new(1.0, 0.0, 1.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : fu, p3 : u}, Vec3::new(1.0, 0.0, 1.0), normal);
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : f, p3 : fu});
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : fu, p3 : u});
                         },
@@ -656,8 +656,8 @@ pub fn construct_grid(f : impl DenFn3<f32>, offset : Vec3<f32>, a : f32, size : 
 
                             let normal = grid.get(x,y,z).hermite_data.get(&10).unwrap().normal;
 
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : rf, p3 : r}, Vec3::new(1.0, 1.0, 0.0), normal);
-                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : f, p3 : rf}, Vec3::new(1.0, 1.0, 0.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : rf, p3 : r}, Vec3::new(1.0, 0.0, 1.0), normal);
+                            add_triangle_pos_color_normal(render_tr_light, Triangle3{p1 : t, p2 : f, p3 : rf}, Vec3::new(1.0, 0.0, 1.0), normal);
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : rf, p3 : r});
                             triangles_for_rt.push(Triangle3{p1 : t, p2 : f, p3 : rf});
                         },
