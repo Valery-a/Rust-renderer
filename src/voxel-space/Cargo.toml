@@ -1,0 +1,9 @@
+[package]
+name = "voxel-space"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cgmath = "0.18.0"
+parking_lot = "0.12.1"
+slotmap = "1.0.6"
