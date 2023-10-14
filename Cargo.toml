@@ -1,0 +1,12 @@
+[package]
+name = "MutEnoic19VD"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+winit = "0.24"
+noise = "0.7"
+
+[[bench]]
+name = "benchmark_greedy_meshing"
+harness = false
