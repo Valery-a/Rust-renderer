@@ -37,7 +37,7 @@ impl Camera {
             far,
         };
 
-        // Projection and view matrices initialize
+        // Projection and view matrices initialization
         camera.recalculate_projection();
         camera.recalculate_view();
         camera
@@ -91,14 +91,58 @@ impl Camera {
 
     // Recalculate the view matrix based on the camera's position and rotation
     fn recalculate_view(&mut self) {
+        // Combine rotation and translation to form the view matrix
         self.view = Mat4::rotate(self.rotation) * Mat4::translate(-self.position);
     }
 
-    // gettersz and setters for various camera properties
+    // Move the camera forward along its front vector
+    pub fn move_forward(&mut self, distance: f32) {
+        let front = self.get_front();
+        self.position += front * distance;
+        self.recalculate_view();
+    }
+
+    // Move the camera backward along its front vector
+    pub fn move_backward(&mut self, distance: f32) {
+        let front = self.get_front();
+        self.position -= front * distance;
+        self.recalculate_view();
+    }
+
+    // Move the camera left along its right vector
+    pub fn move_left(&mut self, distance: f32) {
+        let right = self.get_right();
+        self.position -= right * distance;
+        self.recalculate_view();
+    }
+
+    // Move the camera right along its right vector
+    pub fn move_right(&mut self, distance: f32) {
+        let right = self.get_right();
+        self.position += right * distance;
+        self.recalculate_view();
+    }
+
+    // Ascend (move upwards) the camera
+    pub fn ascend(&mut self, distance: f32) {
+        self.position.y += distance;
+        self.recalculate_view();
+    }
+
+    // Descend (move downwards) the camera
+    pub fn descend(&mut self, distance: f32) {
+        self.position.y -= distance;
+        self.recalculate_view();
+    }
+
+    // getters and setters for various camera properties
+
+    // Getter for camera position
     pub fn get_position(&self) -> Vec3 {
         self.position
     }
 
+    // Setter for camera position
     pub fn set_position(&mut self, position: Vec3) {
         self.position = position;
         self.recalculate_view();
@@ -106,31 +150,38 @@ impl Camera {
 
     // Deprecated function to set the position based on a player's position
     pub fn set_position_from_player_position(&mut self, player_position: Vec3) {
+        // Adjust camera position based on player position and eye height
         self.position = player_position + Vec3::new(0.0, EYE_HEIGHT, 0.0);
         self.recalculate_view();
     }
 
+    // Getter for camera rotation
     pub fn get_rotation(&self) -> Quaternion {
         self.rotation
     }
 
+    // Setter for camera rotation
     pub fn set_rotation(&mut self, rotation: Quaternion) {
         self.rotation = rotation;
         self.recalculate_view();
     }
 
+    // Getter for camera projection matrix
     pub fn get_projection(&self) -> Mat4 {
         self.projection
     }
 
+    // Getter for camera view matrix
     pub fn get_view(&self) -> Mat4 {
         self.view
     }
 
+    // Getter for camera field of view
     pub fn get_fov(&self) -> f32 {
         self.fov
     }
 
+    // Setter for camera field of view
     pub fn set_fov(&mut self, fov: f32) {
         self.fov = fov;
         self.recalculate_projection();
