@@ -6,17 +6,12 @@ use glad_gl::gl::*;
 use crate::renderer::RGBA;
 use crate::ht_renderer;
 
-pub fn set_shader_if_not_already(renderer: &mut ht_renderer, shader_index: usize) -> Result<(), String> {
-    if shader_index < renderer.backend.shaders.len() {
-        if renderer.backend.current_shader != Some(shader_index) {
-            unsafe {
-                UseProgram(renderer.backend.shaders.as_mut().unwrap()[shader_index].program);
-                renderer.backend.current_shader = Some(shader_index);
-            }
+pub fn set_shader_if_not_already(renderer: &mut ht_renderer, shader_index: usize) {
+    if renderer.backend.current_shader != Some(shader_index) {
+        unsafe {
+            UseProgram(renderer.backend.shaders.as_mut().unwrap()[shader_index].program);
+            renderer.backend.current_shader = Some(shader_index);
         }
-        Ok(())
-    } else {
-        Err(format!("Shader index {} is out of bounds.", shader_index))
     }
 }
 
@@ -26,25 +21,6 @@ pub fn gen_rainbow(time: f64) -> RGBA {
     let g = ((frequency * (time as f64) + 2.0).sin() * 127.0f64 + 128.0f64);
     let b = ((frequency * (time as f64) + 4.0).sin() * 127.0f64 + 128.0f64);
     RGBA { r: (r) as u8, g: (g) as u8, b: (b) as u8, a: 255 }
-}
-
-pub fn load_shader_from_file(path: &str, shader_type: GLenum) -> Result<GLuint, String> {
-
-    let mut success: GLint = 1;
-    GetShaderiv(shader, COMPILE_STATUS, &mut success);
-
-    if success == 0 {
-        let mut log_length: GLint = 0;
-        GetShaderiv(shader, INFO_LOG_LENGTH, &mut log_length);
-
-        let mut log: Vec<u8> = Vec::with_capacity(log_length as usize);
-        log.extend([b' '; log_length as usize]);
-        GetShaderInfoLog(shader, log_length, null_mut(), log.as_mut_ptr() as *mut GLchar);
-
-        return Err(String::from_utf8_lossy(&log).to_string());
-    }
-
-    Ok(shader)
 }
 
 pub fn load_string_from_file(path: String) -> Result<String, String> {
@@ -102,7 +78,7 @@ pub fn distance2d(a: Vec2, b: Vec2) -> f32 {
     (x * x + y * y).abs().sqrt()
 }
 
-// make sure to save negative vec
+// make sure to preserve negative vectors
 pub fn clamp_magnitude(vector: Vec3, max_magnitude: f32) -> Vec3 {
     let magnitude = vector.magnitude();
     if magnitude > max_magnitude {
@@ -184,7 +160,6 @@ pub fn gltf_matrix_to_gfx_maths_mat4(a: [[f32; 4]; 4]) -> gfx_maths::Mat4 {
 }
 
 pub fn interpolate_mats(a: Mat4, b: Mat4, t: f64) -> Mat4 {
-    let t = t.clamp(0.0, 1.0);
     let mut a = a;
     let mut b = b;
     let mut t = t;
@@ -215,7 +190,7 @@ pub fn multiply_vec3_by_f64(vec: Vec3, f: f64) -> Vec3 {
     Vec3::new(vec.x * f as f32, vec.y * f as f32, vec.z * f as f32)
 }
 
-// x0, y1, z2, w3
+// 0 = x, 1 = y, 2 = z, 3 = w
 pub fn interpolate_quaternion(a: (f64,f64,f64,f64), b: (f64,f64,f64,f64), t: f64) -> (f64,f64,f64,f64) {
     let mut dot = a.0 * b.0 + a.1 * b.1 + a.2 * b.2 + a.3 * b.3;
     let mut b = b;
