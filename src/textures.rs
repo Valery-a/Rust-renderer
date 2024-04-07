@@ -86,6 +86,7 @@ impl Texture {
         let diffuse_data = load_image(diffuse_file_name.as_str()).map_err(|e| TextureError::LoadingError(e.clone()))?;
 
         {
+            // load opengl textures
             let mut textures: [GLuint; 4] = [0; 4];
             unsafe {
                 GenTextures(4, textures.as_mut_ptr());
@@ -115,7 +116,7 @@ impl Texture {
                 assert!(diffuse_data.dimensions.0 == roughness_data.dimensions.0 && diffuse_data.dimensions.1 == roughness_data.dimensions.1);
                 assert!(diffuse_data.dimensions.0 == normal_data.dimensions.0 && diffuse_data.dimensions.1 == normal_data.dimensions.1);
 
-                // default
+                // normal texture
                 unsafe {
                     BindTexture(TEXTURE_2D, normal_texture);
                     TexImage2D(TEXTURE_2D, 0, RGB as i32, normal_data.dimensions.0 as i32, normal_data.dimensions.1 as i32, 0, RGBA, UNSIGNED_BYTE, normal_data.data.as_ptr() as *const GLvoid);
@@ -127,7 +128,7 @@ impl Texture {
                     GenerateMipmap(TEXTURE_2D);
                 }
 
-                // metal
+                // metallic texture
                 unsafe {
                     BindTexture(TEXTURE_2D, metallic_texture);
                     TexImage2D(TEXTURE_2D, 0, RGBA as i32, metallic_data.dimensions.0 as i32, metallic_data.dimensions.1 as i32, 0, RGBA, UNSIGNED_BYTE, metallic_data.data.as_ptr() as *const GLvoid);
@@ -139,7 +140,7 @@ impl Texture {
                     GenerateMipmap(TEXTURE_2D);
                 }
 
-                // rough
+                // roughness texture
                 unsafe {
                     BindTexture(TEXTURE_2D, roughness_texture);
                     TexImage2D(TEXTURE_2D, 0, RGBA as i32, roughness_data.dimensions.0 as i32, roughness_data.dimensions.1 as i32, 0, RGBA, UNSIGNED_BYTE, roughness_data.data.as_ptr() as *const GLvoid);
@@ -159,6 +160,7 @@ impl Texture {
                     normal_texture
                 };
 
+            // return
             Ok(Texture {
                 dimensions: diffuse_data.dimensions,
                 material,
@@ -171,9 +173,9 @@ impl Texture {
         }
     }
 
-    //// Initiates the loading of an image on a separate thread. Upon completion, the associated atomic bool will be marked as true.
-    //// Concurrently, the image data will be accessible through the provided Arc<Mutex<Option<IntermediaryTexture>>>.
-    //// Subsequently, it is imperative to invoke Texture::load_from_intermediary to finalize the loading process and integrate the texture into OpenGL.
+    /// begins loading an image on a new thread; once complete, the returned atomic bool will be set to true
+    /// and the image data will be available in the returned Arc<Mutex<Option<IntermidiaryTexture>>>
+    /// then, you must call `Texture::load_from_intermidiary` to load the texture into opengl
     pub fn new_from_name_asynch_begin(name: &str) -> (Arc<AtomicBool>, Arc<Mutex<Option<IntermidiaryTexture>>>) {
         let finished = Arc::new(AtomicBool::new(false));
         let finished_clone = finished.clone();
@@ -183,6 +185,7 @@ impl Texture {
 
         thread::spawn(move || {
             let base_file_name = format!("base/textures/{}/{}_", name_clone, name_clone);
+            // substance painter file names
             let diffuse_file_name = base_file_name.clone() + "diff.png";
             let normal_file_name = base_file_name.clone() + "normal.png";
             let metallic_file_name = base_file_name.clone() + "metal.png";
@@ -222,7 +225,7 @@ impl Texture {
         (finished, texture)
     }
 
-    // loads a texture from an intermidiary texture
+    /// loads a texture from an intermidiary texture
     pub fn load_from_intermidiary(inter: Option<IntermidiaryTexture>) -> Result<Self, TextureError> {
         let inter = inter.ok_or(TextureError::LoadingError("texture failed to load!".to_string()))?;
         let diffuse_data = inter.diffuse;
@@ -310,7 +313,6 @@ impl Texture {
         }
     }
 
-    // unloads the texture from OpenGL.
     pub fn unload(&mut self) {
         unsafe {
             DeleteTextures(4, [self.diffuse_texture, self.normal_texture, self.metallic_texture, self.roughness_texture].as_ptr());
@@ -318,7 +320,6 @@ impl Texture {
     }
 }
 
-// loads an image from a file.
 pub fn load_image(file_name: &str) -> Result<Image, String> { // todo: use dds
     let img_data = std::io::BufReader::new(std::fs::File::open(file_name).map_err(|e| format!("Failed to load image: {}", e))?);
     let img = image::io::Reader::new(img_data).with_guessed_format().map_err(|e| format!("Failed to load image: {}", e))?.decode().map_err(|e| format!("Failed to load image: {}", e))?;
