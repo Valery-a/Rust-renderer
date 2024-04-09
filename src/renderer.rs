@@ -336,15 +336,15 @@ impl ht_renderer {
 
                     // shadow back
                     BindFramebuffer(FRAMEBUFFER, shadow_buffers[0]);
-                    //let mut shadow_buffer_tex_scratch = 0;
-                    //GenTextures(1, &mut shadow_buffer_tex_scratch);
+                    let mut shadow_buffer_tex_scratch = 0;
+                    GenTextures(1, &mut shadow_buffer_tex_scratch);
 
                     //// shadow scratch
-                    //BindTexture(TEXTURE_2D, shadow_buffer_tex_scratch);
-                    //TexImage2D(TEXTURE_2D, 0, R8I as i32, render_width / SHADOW_FRAC, render_height / SHADOW_FRAC, 0, RED_INTEGER, BYTE, std::ptr::null());
-                    //TexParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST as i32);
-                    //TexParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, NEAREST as i32);
-                    //FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, shadow_buffer_tex_scratch, 0);
+                    BindTexture(TEXTURE_2D, shadow_buffer_tex_scratch);
+                    TexImage2D(TEXTURE_2D, 0, R8I as i32, render_width / SHADOW_FRAC, render_height / SHADOW_FRAC, 0, RED_INTEGER, BYTE, std::ptr::null());
+                    TexParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST as i32);
+                    TexParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, NEAREST as i32);
+                    FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, shadow_buffer_tex_scratch, 0);
 
                     // attach depth stencil
                     let mut shadow_buffer_renderbuffer = 0;

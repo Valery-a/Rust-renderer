@@ -310,7 +310,7 @@ impl Player {
         }
         false
     }
-
+    
     pub fn handle_input(&mut self, renderer: &mut ht_renderer, delta_time: f32) -> Option<Vec<ClientUpdate>> {
         if self.first_run {
             self.first_run = false;
@@ -318,6 +318,16 @@ impl Player {
             renderer.lock_mouse(true);
         }
 
+        if keyboard::check_key_released(HTKey::Comma) {
+            debug!("unlocking mouse");
+            renderer.lock_mouse(false);
+            self.locked_mouse = false;
+        } else if keyboard::check_key_released(HTKey::Period) {
+            debug!("locking mouse");
+            renderer.lock_mouse(true);
+            self.locked_mouse = true;
+        }
+        
         let jump = self.handle_jump(renderer, delta_time);
         let look = self.handle_mouse_movement(renderer, delta_time);
         let movement = self.handle_keyboard_movement(renderer, jump, delta_time);

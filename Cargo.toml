@@ -1,12 +1,42 @@
 [package]
-name = "MutEnoic19VD"
-version = "0.1.0"
-edition = "2018"
+name = "mutEngine19"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+default = [ "graphical", "linux_graphical" ]
+headless = [ ]
+graphical = [ "glfw", "egui_glfw_gl", "glad-gl", "fyrox-sound" ]
+linux_graphical = [ "graphical", "glfw/default" ]
 
 [dependencies]
-winit = "0.24"
-noise = "0.7"
+gltf = { version = "1.0", features = ["names", "utils"] }
+serde = { version = "1.0", features = ["derive"] }
+gfx-maths = { version = "0.2.8", features = ["serde"]}
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7.7", features = ["codec"] }
+tokio-stream = "0.1.13"
+bytes = "1.4.0"
+bincode = "1.3.3"
+uuid = { version = "1.1.2", features = ["v4"] }
+egui_glfw_gl = { path = "./egui_glfw_gl", optional = true }
+fyrox-sound = { version = "0.30.0", optional = true }
+halfbrown = "0.1.15"
+glfw = { version = "0.51.0", optional = true, default-features = false }
+async-recursion = "1.0.0"
+physx-sys = { version = "0.11.0" }
+rmp-serde = "1.1.0"
+kira = "0.7.3"
+image = "0.24.3"
+log = "0.4.0"
+env_logger = "0.10.0"
+gl_matrix = "0.0"
+lazy_static = "1.4.0"
+glad-gl = { path = "./glad-gl", optional = true }
+rand = "0.8.5"
+libm = "0.2.6"
+num_cpus = "1.15.0"
+mutex-timeouts = { version = "0.3.0", features = ["tokio"] }
 
-[[bench]]
-name = "benchmark_greedy_meshing"
-harness = false
+[profile.release.package.physx-sys]
+debug = false
