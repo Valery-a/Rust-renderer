@@ -10,6 +10,12 @@ graphical = [ "glfw", "egui_glfw_gl", "glad-gl", "fyrox-sound" ]
 linux_graphical = [ "graphical", "glfw/default" ]
 
 [dependencies]
+diesel = { version = "2.1.5", features = ["postgres"] }
+dotenv = "0.15.0"
+jsonwebtoken = "7.2.0"
+bcrypt = "0.15.1"
+redis = "0.25.3"
+tokio-tungstenite = "0.21.0"
 gltf = { version = "1.0", features = ["names", "utils"] }
 serde = { version = "1.0", features = ["derive"] }
 gfx-maths = { version = "0.2.8", features = ["serde"]}
