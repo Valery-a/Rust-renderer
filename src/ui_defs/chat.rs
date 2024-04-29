@@ -6,7 +6,7 @@ use crate::worldmachine::WorldMachine;
 
 lazy_static!{
     pub static ref CHAT_BUFFER: Arc<Mutex<ChatBuffer>> = Arc::new(Mutex::new(ChatBuffer {
-        my_name: "awaiting initial name".to_string(),
+        my_name: "awaiting a name".to_string(),
         messages: VecDeque::new(),
         next_message_buffer: "".to_string(),
     }));
@@ -42,7 +42,7 @@ pub fn chat(ui: &mut Ui, wm: &mut WorldMachine) -> (Option<String>, Option<Strin
     let mut set_name = None;
 
     ui.horizontal(|ui| {
-        ui.label("your name is: ");
+        ui.label("playertag: ");
         if ui.text_edit_singleline(&mut CHAT_BUFFER.lock().unwrap().my_name).lost_focus() {
             let name = CHAT_BUFFER.lock().unwrap().my_name.clone();
             set_name = Some(name);
@@ -67,10 +67,10 @@ pub fn chat(ui: &mut Ui, wm: &mut WorldMachine) -> (Option<String>, Option<Strin
 
     ui.horizontal(|ui| {
         ui.text_edit_singleline(&mut CHAT_BUFFER.lock().unwrap().next_message_buffer);
-        if ui.button("send").clicked() {
+        if ui.button("enter").clicked() {
             let message = CHAT_BUFFER.lock().unwrap().next_message_buffer.clone();
             CHAT_BUFFER.lock().unwrap().next_message_buffer = "".to_string();
-            write_chat("you".to_string(), message.clone());
+            write_chat("you sent:".to_string(), message.clone());
             send_message = Some(message);
         }
     });

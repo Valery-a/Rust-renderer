@@ -30,11 +30,8 @@ impl AudioBackend {
 
     pub fn load_sound(&self, name: &str) {
         let mut sounds = self.sounds.lock().unwrap();
-        // get full path
         let full_path = format!("base/snd/{}", name);
-        // load sound
         let sound = SoundBufferResource::new_generic(block_on(DataSource::from_file(&full_path)).unwrap()).expect("failed to load sound");
-        // insert into hashmap
         sounds.insert(name.to_string(), sound);
     }
 
@@ -113,7 +110,6 @@ impl AudioBackend {
         drop(oneshots);
 
         let mut oneshots = ONESHOTS.lock().unwrap();
-        // play oneshots
         for oneshot in oneshots.iter() {
             self.play_oneshot_with_uuid(&oneshot.0, &oneshot.0, context, oneshot.1);
         }

@@ -1,8 +1,6 @@
 use std::slice::Iter;
 use halfbrown::HashMap;
 
-/// vec but you can index it with two different options
-/// used mainly cause bones need to be indexed by both bone index and bone send to gpu order
 #[derive(Clone, Debug)]
 pub struct DoubleIndexVec<T> {
     vec: Vec<T>,

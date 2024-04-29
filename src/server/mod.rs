@@ -1,29 +1,29 @@
-use halfbrown::HashMap;
-use std::collections::{VecDeque};
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::time::{SystemTime, UNIX_EPOCH};
-use async_recursion::async_recursion;
-use gfx_maths::*;
-use tokio::sync::{mpsc, watch};
-use mutex_timeouts::tokio::MutexWithTimeoutAuto as Mutex;
-use tokio::time::{Instant, Duration};
-use serde::{Serialize, Deserialize};
-use tokio::net::TcpStream;
-use tokio_util::codec::Encoder;
 use crate::physics::PhysicsSystem;
 use crate::server::connections::SteadyMessageQueue;
 use crate::server::lan::{ClientLanConnection, LanConnection, LanListener};
 use crate::server::server_player::{ServerPlayer, ServerPlayerContainer};
-use crate::worldmachine::{EntityId, WorldMachine, WorldUpdate};
 use crate::worldmachine::ecs::{ComponentType, Entity, ParameterValue};
 use crate::worldmachine::player::{MovementInfo, PlayerComponent};
-use crate::worldmachine::snowballs::Snowball;
+use crate::worldmachine::throwballs::ThrowingBall;
+use crate::worldmachine::{EntityId, WorldMachine, WorldUpdate};
+use async_recursion::async_recursion;
+use gfx_maths::*;
+use halfbrown::HashMap;
+use mutex_timeouts::tokio::MutexWithTimeoutAuto as Mutex;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::net::TcpStream;
+use tokio::sync::{mpsc, watch};
+use tokio::time::{Duration, Instant};
+use tokio_util::codec::Encoder;
 
 pub mod connections;
-pub mod server_player;
 pub mod lan;
+pub mod server_player;
 
 pub type PacketUUID = String;
 pub type ConnectionUUID = String;
@@ -56,14 +56,21 @@ pub enum FastPacket {
     ChangeScale(EntityId, Vec3),
     PlayerMoved(EntityId, Vec3, Quaternion, Quaternion),
     EntitySetParameter(EntityId, ComponentType, String, ParameterValue),
-    PlayerMove(ConnectionUUID, Vec3, Vec3, Quaternion, Quaternion, Option<MovementInfo>),
-    // connection uuid, position, displacement_vector, rotation, head rotation, movement info
+    PlayerMove(
+        ConnectionUUID,
+        Vec3,
+        Vec3,
+        Quaternion,
+        Quaternion,
+        Option<MovementInfo>,
+    ),
+
     PlayerJump(ConnectionUUID),
     PlayerFuckYouMoveHere(Vec3),
-    // connection uuid, position,
+
     PlayerCheckPosition(ConnectionUUID, Vec3),
-    // connection uuid, position
-    PlayerFuckYouSetRotation(Quaternion), // connection uuid, rotation
+
+    PlayerFuckYouSetRotation(Quaternion),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,13 +94,13 @@ pub enum SteadyPacket {
     RemoveEntity(EntityId),
     FinaliseMapLoad,
     InitialisePlayer(ConnectionUUID, EntityId, String, Vec3, Quaternion, Vec3),
-    // uuid, (entity id so we know to ignore updates from that entity), name, position, rotation, scale
+
     Message(String),
     ChatMessage(ConnectionUUID, String),
     SetName(ConnectionUUID, String),
     NameRejected(NameRejectionReason),
-    Respawn(Vec3), // position
-    ThrowSnowball(String, Vec3, Vec3), // uuid, position, initial velocity
+    Respawn(Vec3),
+    ThrowThrowAballll(String, Vec3, Vec3),
 
     Ping,
 }
@@ -157,7 +164,13 @@ impl Server {
         }
     }
 
-    pub async fn new_host_lan_server(map_name: &str, physics: PhysicsSystem, tcp_port: u16, udp_port: u16, hostname: &str) -> Self {
+    pub async fn new_host_lan_server(
+        map_name: &str,
+        physics: PhysicsSystem,
+        tcp_port: u16,
+        udp_port: u16,
+        hostname: &str,
+    ) -> Self {
         let mut worldmachine = WorldMachine::default();
         worldmachine.initialise(physics, true);
         worldmachine.load_map(map_name).expect("failed to load map");
@@ -175,7 +188,9 @@ impl Server {
         let listener_clone = listener;
         tokio::spawn(async move {
             loop {
-                the_clone.connection_listening_thread(listener_clone.clone()).await;
+                the_clone
+                    .connection_listening_thread(listener_clone.clone())
+                    .await;
             }
         });
 
@@ -187,7 +202,10 @@ impl Server {
         loop {
             let new_connection = listener.poll_new_connection().await;
             if let Some(new_connection) = new_connection {
-                self.connections_incoming.lock().await.push_back(new_connection);
+                self.connections_incoming
+                    .lock()
+                    .await
+                    .push_back(new_connection);
             }
         }
     }
@@ -205,7 +223,12 @@ impl Server {
                     }
                     let connection = connection.unwrap();
                     let the_listener_clone = listener_clone.clone();
-                    the_clone.new_connection(Connection::Lan(the_listener_clone.clone(), connection.clone())).await;
+                    the_clone
+                        .new_connection(Connection::Lan(
+                            the_listener_clone.clone(),
+                            connection.clone(),
+                        ))
+                        .await;
                 });
                 debug!("spawned new connection thread");
             }
@@ -219,7 +242,11 @@ impl Server {
         }
     }
 
-    async unsafe fn send_steady_packet_unsafe(&self, connection_og: &Connection, packet: SteadyPacketData) -> bool {
+    async unsafe fn send_steady_packet_unsafe(
+        &self,
+        connection_og: &Connection,
+        packet: SteadyPacketData,
+    ) -> bool {
         match connection_og.clone() {
             Connection::Local(connection) => {
                 let sus = connection.steady_update_sender.clone();
@@ -229,7 +256,7 @@ impl Server {
             }
             Connection::Lan(_, connection) => {
                 let res = connection.serialise_and_send_steady(packet.clone()).await;
-                return res.is_ok()
+                return res.is_ok();
             }
         }
         true
@@ -244,7 +271,8 @@ impl Server {
                     uuid: uuid.clone(),
                 };
                 unsafe {
-                    self.send_steady_packet_unsafe(&Connection::Local(connection), packet_data).await
+                    self.send_steady_packet_unsafe(&Connection::Local(connection), packet_data)
+                        .await
                 }
             }
             Connection::Lan(listener, connection) => {
@@ -254,7 +282,11 @@ impl Server {
                     uuid: uuid.clone(),
                 };
                 unsafe {
-                    self.send_steady_packet_unsafe(&Connection::Lan(listener, connection), packet_data).await
+                    self.send_steady_packet_unsafe(
+                        &Connection::Lan(listener, connection),
+                        packet_data,
+                    )
+                    .await
                 }
             }
         }
@@ -273,7 +305,10 @@ impl Server {
                 let packet_data = FastPacketData {
                     packet: Some(packet),
                 };
-                connection.serialise_and_send_fast(connection.uuid.clone(), listener.clone(), packet_data).await.unwrap();
+                connection
+                    .serialise_and_send_fast(connection.uuid.clone(), listener.clone(), packet_data)
+                    .await
+                    .unwrap();
             }
         }
     }
@@ -289,7 +324,9 @@ impl Server {
                 }
             }
             Connection::Lan(listener, connection) => {
-                let packet = connection.attempt_receive_fast_and_deserialise(listener).await;
+                let packet = connection
+                    .attempt_receive_fast_and_deserialise(listener)
+                    .await;
                 if let Some(packet) = packet {
                     return Some(packet.packet.unwrap());
                 }
@@ -300,13 +337,18 @@ impl Server {
 
     pub async fn begin_connection(&self, connection: Connection) -> Option<ServerPlayerContainer> {
         let worldmachine = self.worldmachine.lock().await;
-        // for each entity in the worldmachine, send an initialise packet
+
         let world_clone = worldmachine.world.clone();
         let physics = worldmachine.physics.lock().unwrap().clone().unwrap();
-        // drop worldmachine so we don't hold the lock while we send packets
+
         drop(worldmachine);
         for entity in world_clone.entities.iter() {
-            let res = self.send_steady_packet(&connection, SteadyPacket::InitialiseEntity(entity.uid, entity.clone())).await;
+            let res = self
+                .send_steady_packet(
+                    &connection,
+                    SteadyPacket::InitialiseEntity(entity.uid, entity.clone()),
+                )
+                .await;
             if !res {
                 return None;
             }
@@ -329,38 +371,49 @@ impl Server {
         let player_component = PlayerComponent::new(name, uuid.clone(), position, rotation, scale);
         player_entity.add_component(player_component);
 
-        // relock worldmachine
         let mut worldmachine = self.worldmachine.lock().await;
         worldmachine.world.entities.push(player_entity.clone());
 
         drop(worldmachine);
-        let res = self.send_steady_packet(&connection, SteadyPacket::InitialisePlayer(
-            player.uuid.to_string(),
-            entity_uuid,
-            player.name.lock().await.clone(),
-            position,
-            rotation,
-            scale)).await;
+        let res = self
+            .send_steady_packet(
+                &connection,
+                SteadyPacket::InitialisePlayer(
+                    player.uuid.to_string(),
+                    entity_uuid,
+                    player.name.lock().await.clone(),
+                    position,
+                    rotation,
+                    scale,
+                ),
+            )
+            .await;
         if !res {
             return None;
         }
         debug!("sent player initialise packet");
         let mut worldmachine = self.worldmachine.lock().await;
         worldmachine.world.entities.push(player_entity.clone());
-        worldmachine.queue_update(WorldUpdate::InitEntity(entity_uuid, player_entity.clone())).await;
+        worldmachine
+            .queue_update(WorldUpdate::InitEntity(entity_uuid, player_entity.clone()))
+            .await;
 
         let players = worldmachine.players.clone();
         drop(worldmachine);
         let players = players.unwrap();
 
-        players.lock().await.insert(uuid.clone(), ServerPlayerContainer {
-            player: player.clone(),
-            entity_id: Some(entity_uuid),
-            connection: connection.clone(),
-        });
+        players.lock().await.insert(
+            uuid.clone(),
+            ServerPlayerContainer {
+                player: player.clone(),
+                entity_id: Some(entity_uuid),
+                connection: connection.clone(),
+            },
+        );
 
-
-        let res = self.send_steady_packet(&connection, SteadyPacket::FinaliseMapLoad).await;
+        let res = self
+            .send_steady_packet(&connection, SteadyPacket::FinaliseMapLoad)
+            .await;
 
         if res {
             Some(players.lock().await.get(&uuid).cloned().unwrap())
@@ -373,7 +426,6 @@ impl Server {
     async fn steady_packet(&self, player: &ServerPlayerContainer, packet: SteadyPacket) -> bool {
         match packet {
             SteadyPacket::InitialiseEntity(_uid, _entity) => {
-                // client shouldn't be sending this
                 debug!("client sent initialise packet");
             }
             SteadyPacket::InitialisePlayer(_, _, _, _, _, _) => {}
@@ -381,51 +433,52 @@ impl Server {
             SteadyPacket::FinaliseMapLoad => {}
             SteadyPacket::RemoveEntity(_) => {}
             SteadyPacket::ChatMessage(_who_sent, message) => {
-                // mirror to all other clients
                 let who_sent = match player.connection.clone() {
-                    Connection::Local(local_connection) => {
-                        local_connection.uuid.clone()
-                    }
-                    Connection::Lan(listener, connection) => {
-                        connection.uuid.clone()
-                    }
+                    Connection::Local(local_connection) => local_connection.uuid.clone(),
+                    Connection::Lan(listener, connection) => connection.uuid.clone(),
                 };
                 let packet = SteadyPacket::ChatMessage(who_sent, message);
                 match &self.connections {
                     Connections::Local(local_connections) => {
                         let cons = local_connections.lock().await.clone();
                         for connection in cons.iter() {
-                            self.send_steady_packet(&Connection::Local(connection.clone()), packet.clone()).await;
+                            self.send_steady_packet(
+                                &Connection::Local(connection.clone()),
+                                packet.clone(),
+                            )
+                            .await;
                         }
                     }
                     Connections::Lan(listener, connections) => {
                         let cons = connections.lock().await.clone();
                         for a_connection in cons.iter() {
-                            self.send_steady_packet(&Connection::Lan(listener.clone(), a_connection.clone()), packet.clone()).await;
+                            self.send_steady_packet(
+                                &Connection::Lan(listener.clone(), a_connection.clone()),
+                                packet.clone(),
+                            )
+                            .await;
                         }
                     }
                 }
             }
             SteadyPacket::SetName(_who_sent, new_name) => {
-                // mirror to all other clients
                 let who_sent = match player.connection.clone() {
-                    Connection::Local(local_connection) => {
-                        local_connection.uuid.clone()
-                    }
-                    Connection::Lan(listener, connection) => {
-                        connection.uuid.clone()
-                    }
+                    Connection::Local(local_connection) => local_connection.uuid.clone(),
+                    Connection::Lan(listener, connection) => connection.uuid.clone(),
                 };
                 let packet = SteadyPacket::SetName(who_sent, new_name.clone());
                 match &self.connections {
                     Connections::Local(local_connections) => {
                         let cons = local_connections.lock().await.clone();
                         for connection in cons.iter() {
-                            self.send_steady_packet(&Connection::Local(connection.clone()), packet.clone()).await;
+                            self.send_steady_packet(
+                                &Connection::Local(connection.clone()),
+                                packet.clone(),
+                            )
+                            .await;
                         }
                     }
                     Connections::Lan(listener, connections) => {
-                        // check if name is taken
                         let mut name_taken = false;
                         let mut wm = self.worldmachine.lock().await;
                         let players = wm.players.as_mut().unwrap().lock().await;
@@ -442,9 +495,12 @@ impl Server {
                             Connection::Lan(_, connection) => connection,
                         };
                         if name_taken {
-                            self.send_steady_packet(&Connection::Lan(listener.clone(), connection.clone()), SteadyPacket::NameRejected(NameRejectionReason::Taken)).await;
+                            self.send_steady_packet(
+                                &Connection::Lan(listener.clone(), connection.clone()),
+                                SteadyPacket::NameRejected(NameRejectionReason::Taken),
+                            )
+                            .await;
                         } else {
-                            // set name
                             let mut wm = self.worldmachine.lock().await;
                             let mut players = wm.players.as_mut().unwrap().lock().await;
                             let player = players.get_mut(&connection.uuid).unwrap();
@@ -452,24 +508,24 @@ impl Server {
                             drop(players);
                             drop(wm);
 
-                            // send to all other clients
                             let packet = SteadyPacket::SetName(connection.uuid.clone(), new_name);
                             let cons = connections.lock().await.clone();
                             for a_connection in cons {
-                                self.send_steady_packet(&Connection::Lan(listener.clone(), a_connection.clone()), packet.clone()).await;
+                                self.send_steady_packet(
+                                    &Connection::Lan(listener.clone(), a_connection.clone()),
+                                    packet.clone(),
+                                )
+                                .await;
                             }
                         }
                     }
                 }
             }
-            SteadyPacket::ThrowSnowball(_uuid, _positon, _initial_velocity) => {
-                // as server is authoritative, calculate the snowball's position and velocity ourselves
-                // position will be the player's position
-                // velocity will be the player's velocity + the player's forward vector * 10
+            SteadyPacket::ThrowThrowAballll(_uuid, _positon, _initial_velocity) => {
                 debug!("player threw snowball");
-                let snowball_cooldown = *player.player.snowball_cooldown.lock().await;
-                if snowball_cooldown <= 0.0 {
-                    *player.player.snowball_cooldown.lock().await = 0.5;
+                let tball_cooldown = *player.player.tball_cooldown.lock().await;
+                if tball_cooldown <= 0.0 {
+                    *player.player.tball_cooldown.lock().await = 0.5;
                     let position = player.player.get_position(None, None).await;
                     let mut rotation = player.player.get_head_rotation(None, None).await;
                     rotation.w = -rotation.w;
@@ -481,37 +537,53 @@ impl Server {
                     let physics = worldmachine.physics.clone();
                     drop(worldmachine);
 
-                    let snowball = Snowball::new(position, velocity, physics.lock().unwrap().as_ref().unwrap());
-                    // send to all clients (including the one that sent it)
-                    let packet = SteadyPacket::ThrowSnowball(snowball.uuid.clone(), position, velocity);
+                    let snowball = ThrowingBall::new(
+                        position,
+                        velocity,
+                        physics.lock().unwrap().as_ref().unwrap(),
+                    );
+
+                    let packet =
+                        SteadyPacket::ThrowThrowAballll(snowball.uuid.clone(), position, velocity);
 
                     let mut worldmachine = self.worldmachine.lock().await;
-                    worldmachine.snowballs.push(snowball);
+                    worldmachine.tballs.push(snowball);
                     drop(worldmachine);
                     match &self.connections {
                         Connections::Local(local_connections) => {
                             let cons = local_connections.lock().await.clone();
                             for connection in cons.iter() {
-                                self.send_steady_packet(&Connection::Local(connection.clone()), packet.clone()).await;
+                                self.send_steady_packet(
+                                    &Connection::Local(connection.clone()),
+                                    packet.clone(),
+                                )
+                                .await;
                             }
                         }
                         Connections::Lan(listener, connections) => {
                             let cons = connections.lock().await.clone();
                             for a_connection in cons.iter() {
-                                self.send_steady_packet(&Connection::Lan(listener.clone(), a_connection.clone()), packet.clone()).await;
+                                self.send_steady_packet(
+                                    &Connection::Lan(listener.clone(), a_connection.clone()),
+                                    packet.clone(),
+                                )
+                                .await;
                             }
                         }
                     }
-
                 }
             }
             SteadyPacket::Ping => {
                 match &player.connection {
-                    Connection::Local(local_connection) => {
-                    }
+                    Connection::Local(local_connection) => {}
                     Connection::Lan(_, connection) => {
-                        let unix_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-                        connection.last_successful_ping.store(unix_time, Ordering::Relaxed);
+                        let unix_time = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                        connection
+                            .last_successful_ping
+                            .store(unix_time, Ordering::Relaxed);
                     }
                 };
             }
@@ -521,7 +593,11 @@ impl Server {
         true
     }
 
-    async fn handle_steady_packets(&self, player: &ServerPlayerContainer, tcp_receiver: &mut Option<mpsc::Receiver<SteadyPacketData>>) -> bool {
+    async fn handle_steady_packets(
+        &self,
+        player: &ServerPlayerContainer,
+        tcp_receiver: &mut Option<mpsc::Receiver<SteadyPacketData>>,
+    ) -> bool {
         match player.connection.clone() {
             Connection::Local(local_connection) => {
                 let sur = local_connection.steady_update_receiver.clone();
@@ -534,7 +610,9 @@ impl Server {
                 }
             }
             Connection::Lan(_, lan_connection) => {
-                let packet = lan_connection.attempt_receive_steady_and_deserialise(tcp_receiver.as_mut().unwrap()).await;
+                let packet = lan_connection
+                    .attempt_receive_steady_and_deserialise(tcp_receiver.as_mut().unwrap())
+                    .await;
                 if let Err(e) = packet {
                     debug!("error receiving steady packet: {:?}", e);
                     return false;
@@ -551,12 +629,36 @@ impl Server {
     }
 
     async fn player_move(&self, player: &ServerPlayerContainer, packet: FastPacket) {
-        if let FastPacket::PlayerMove(uuid, position, displacement_vector, rotation, head_rotation, movement_info) = packet {
+        if let FastPacket::PlayerMove(
+            uuid,
+            position,
+            displacement_vector,
+            rotation,
+            head_rotation,
+            movement_info,
+        ) = packet
+        {
             let (success, correct_position) = {
-                player.player.attempt_position_change(position, displacement_vector, rotation, head_rotation, movement_info.unwrap_or_default(), player.entity_id, self.worldmachine.clone()).await
+                player
+                    .player
+                    .attempt_position_change(
+                        position,
+                        displacement_vector,
+                        rotation,
+                        head_rotation,
+                        movement_info.unwrap_or_default(),
+                        player.entity_id,
+                        self.worldmachine.clone(),
+                    )
+                    .await
             };
-            if success {} else {
-                self.send_fast_packet(&player.connection, FastPacket::PlayerFuckYouMoveHere(correct_position.unwrap())).await
+            if success {
+            } else {
+                self.send_fast_packet(
+                    &player.connection,
+                    FastPacket::PlayerFuckYouMoveHere(correct_position.unwrap()),
+                )
+                .await
             }
         }
     }
@@ -566,12 +668,23 @@ impl Server {
             let worldmachine = self.worldmachine.clone();
             let mut worldmachine = worldmachine.lock().await;
             if !player.player.respawning.load(Ordering::Relaxed) {
-                let server_position = player.player.get_position(player.entity_id, Some(&mut worldmachine)).await;
+                let server_position = player
+                    .player
+                    .get_position(player.entity_id, Some(&mut worldmachine))
+                    .await;
                 let success = server_position == position;
-                if success {} else {
-                    let position = player.player.get_position(player.entity_id, Some(&mut worldmachine)).await;
+                if success {
+                } else {
+                    let position = player
+                        .player
+                        .get_position(player.entity_id, Some(&mut worldmachine))
+                        .await;
                     drop(worldmachine);
-                    self.send_fast_packet(&player.connection, FastPacket::PlayerFuckYouMoveHere(position)).await
+                    self.send_fast_packet(
+                        &player.connection,
+                        FastPacket::PlayerFuckYouMoveHere(position),
+                    )
+                    .await
                 }
             }
         }
@@ -585,30 +698,16 @@ impl Server {
                     drop(fur);
                     if let Some(fast_packet) = packet.packet {
                         match fast_packet.clone() {
-                            /// sent when the player wants to move
                             FastPacket::PlayerMove(_, _, _, _, _, _) => {
                                 self.player_move(player, fast_packet).await;
                             }
-                            /// sent when player is attempting to check if their position is correct against the server's stored position
+
                             FastPacket::PlayerCheckPosition(_, _) => {
                                 self.player_check_position(player, fast_packet).await;
                             }
 
-                            /// sent when the player jumps (deprecated)
-                            FastPacket::PlayerJump(uuid) => {
-                                //let mut worldmachine = self.worldmachine.clone();
-                                //let mut worldmachine = worldmachine.lock().await;
-                                //let mut players = worldmachine.players.clone();
-                                //let mut players = players.as_mut().unwrap().lock().await;
-                                //let player = players.get_mut(&uuid).unwrap();
-                                //if !player.player.attempt_jump() {
-                                //    drop(local_connection);
-                                //    let mut connection = connection.clone();
-                                //    self.send_fast_packet(&connection, FastPacket::PlayerFuckYouMoveHere(player.player.get_position())).await
-                                //}
-                            }
+                            FastPacket::PlayerJump(uuid) => {}
 
-                            // client shouldn't be sending these
                             FastPacket::ChangePosition(_, _) => {}
                             FastPacket::ChangeRotation(_, _) => {}
                             FastPacket::ChangeScale(_, _) => {}
@@ -622,22 +721,23 @@ impl Server {
             }
             Connection::Lan(listener, lan_connection) => {
                 let listener = listener.clone();
-                let packet = lan_connection.attempt_receive_fast_and_deserialise(listener).await;
+                let packet = lan_connection
+                    .attempt_receive_fast_and_deserialise(listener)
+                    .await;
                 if let Some(packet) = packet {
                     match packet.clone().packet.unwrap() {
-                        /// sent when the player wants to move
                         FastPacket::PlayerMove(_, _, _, _, _, _) => {
-                            self.player_move(&player, packet.clone().packet.unwrap()).await;
-                        }
-                        /// sent when player is attempting to check if their position is correct against the server's stored position
-                        FastPacket::PlayerCheckPosition(_, _) => {
-                            self.player_check_position(&player, packet.clone().packet.unwrap()).await;
+                            self.player_move(&player, packet.clone().packet.unwrap())
+                                .await;
                         }
 
-                        /// deprecated
+                        FastPacket::PlayerCheckPosition(_, _) => {
+                            self.player_check_position(&player, packet.clone().packet.unwrap())
+                                .await;
+                        }
+
                         FastPacket::PlayerJump(uuid) => {}
 
-                        // client shouldn't be sending these
                         FastPacket::ChangePosition(_, _) => {}
                         FastPacket::ChangeRotation(_, _) => {}
                         FastPacket::ChangeScale(_, _) => {}
@@ -651,9 +751,13 @@ impl Server {
         }
     }
 
-    pub async fn handle_connection(&self, connection: Connection, player: ServerPlayerContainer) -> bool {
+    pub async fn handle_connection(
+        &self,
+        connection: Connection,
+        player: ServerPlayerContainer,
+    ) -> bool {
         let mut tcp_receiver = match &connection {
-            Connection::Local(_) => { None }
+            Connection::Local(_) => None,
             Connection::Lan(_, connection) => {
                 connection.steady_receiver_passthrough.lock().await.take()
             }
@@ -688,9 +792,7 @@ impl Server {
 
     async fn disconnect_player(&self, uuid: ConnectionUUID, player_entity_id: EntityId) {
         let connections = match self.connections.clone() {
-            Connections::Lan(_, connections) => {
-                connections.clone()
-            }
+            Connections::Lan(_, connections) => connections.clone(),
             _ => {
                 panic!("assert_connection_type_allowed failed");
             }
@@ -699,12 +801,22 @@ impl Server {
         connections.retain(|x| x.uuid != uuid);
         debug!("connections: {:?}", connections.len());
         drop(connections);
-        // remove the player from the world
+
         let worldmachine = self.worldmachine.clone();
         let mut worldmachine = worldmachine.lock().await;
-        if worldmachine.world.entities.iter().any(|x| x.uid == player_entity_id) {
-            worldmachine.world.entities.retain(|x| x.uid != player_entity_id);
-            worldmachine.queue_update(WorldUpdate::EntityNoLongerExists(player_entity_id)).await;
+        if worldmachine
+            .world
+            .entities
+            .iter()
+            .any(|x| x.uid == player_entity_id)
+        {
+            worldmachine
+                .world
+                .entities
+                .retain(|x| x.uid != player_entity_id);
+            worldmachine
+                .queue_update(WorldUpdate::EntityNoLongerExists(player_entity_id))
+                .await;
         }
         let players = worldmachine.players.clone();
         drop(worldmachine);
@@ -715,7 +827,10 @@ impl Server {
     }
 
     async fn new_connection(&self, connection: Connection) {
-        if self.assert_connection_type_allowed(connection.clone()).await {
+        if self
+            .assert_connection_type_allowed(connection.clone())
+            .await
+        {
             match connection.clone() {
                 Connection::Local(local_connection) => {
                     let _connection_index = match self.connections.clone() {
@@ -745,9 +860,7 @@ impl Server {
                     let player = self.begin_connection(connection.clone()).await;
                     if player.is_none() {
                         let connections = match self.connections.clone() {
-                            Connections::Lan(_, connections) => {
-                                connections.clone()
-                            }
+                            Connections::Lan(_, connections) => connections.clone(),
                             _ => {
                                 panic!("assert_connection_type_allowed failed");
                             }
@@ -803,7 +916,10 @@ impl Server {
         tokio::spawn(async move {
             let thread_data = thread_data;
             let connection = Arc::new(local_connection);
-            thread_data.server.new_connection(Connection::Local(connection)).await;
+            thread_data
+                .server
+                .new_connection(Connection::Local(connection))
+                .await;
         });
         connection
     }
@@ -814,15 +930,14 @@ impl Server {
             Connections::Local(connections) => {
                 let connections = connections.lock().await;
                 for connection in connections.iter() {
-                    // todo! check if connection is affected by position
                     connections_affected.push(Connection::Local(connection.clone()));
                 }
             }
             Connections::Lan(listener, connections) => {
                 let connections = connections.lock().await;
                 for connection in connections.iter() {
-                    // todo! check if connection is affected by position
-                    connections_affected.push(Connection::Lan(listener.clone(), connection.clone()));
+                    connections_affected
+                        .push(Connection::Lan(listener.clone(), connection.clone()));
                 }
             }
         }
@@ -849,61 +964,93 @@ impl Server {
     }
 
     pub async fn handle_world_updates(&mut self, updates: Vec<WorldUpdate>) {
-        let mut player_entity_movement_stack: HashMap<EntityId, Vec<(Vec3, Quaternion, Quaternion)>> = HashMap::new();
+        let mut player_entity_movement_stack: HashMap<
+            EntityId,
+            Vec<(Vec3, Quaternion, Quaternion)>,
+        > = HashMap::new();
         for update in updates {
             match update {
                 WorldUpdate::SetPosition(entity_id, vec3) => {
                     let connections = self.get_connections_affected_from_position(vec3).await;
                     for connection in connections {
-                        self.send_fast_packet(&connection, FastPacket::ChangePosition(entity_id, vec3)).await;
+                        self.send_fast_packet(
+                            &connection,
+                            FastPacket::ChangePosition(entity_id, vec3),
+                        )
+                        .await;
                     }
                 }
                 WorldUpdate::SetRotation(entity_id, quat) => {
-                    let connections = self.get_connections_affected_from_position(Vec3::new(0.0, 0.0, 0.0)).await;
+                    let connections = self
+                        .get_connections_affected_from_position(Vec3::new(0.0, 0.0, 0.0))
+                        .await;
                     for connection in connections {
-                        self.send_fast_packet(&connection, FastPacket::ChangeRotation(entity_id, quat)).await;
+                        self.send_fast_packet(
+                            &connection,
+                            FastPacket::ChangeRotation(entity_id, quat),
+                        )
+                        .await;
                     }
                 }
                 WorldUpdate::SetScale(entity_id, vec3) => {
-                    let connections = self.get_connections_affected_from_position(Vec3::new(0.0, 0.0, 0.0)).await;
+                    let connections = self
+                        .get_connections_affected_from_position(Vec3::new(0.0, 0.0, 0.0))
+                        .await;
                     for connection in connections {
-                        self.send_fast_packet(&connection, FastPacket::ChangeScale(entity_id, vec3)).await;
+                        self.send_fast_packet(
+                            &connection,
+                            FastPacket::ChangeScale(entity_id, vec3),
+                        )
+                        .await;
                     }
                 }
                 WorldUpdate::InitEntity(entity_id, entity_data) => {
                     let connections = self.get_all_connections().await;
                     for connection in connections {
-                        self.send_steady_packet(&connection, SteadyPacket::InitialiseEntity(entity_id, entity_data.clone())).await;
+                        self.send_steady_packet(
+                            &connection,
+                            SteadyPacket::InitialiseEntity(entity_id, entity_data.clone()),
+                        )
+                        .await;
                     }
                 }
                 WorldUpdate::EntityNoLongerExists(entity_id) => {
                     let connections = self.get_all_connections().await;
                     for connection in connections {
-                        self.send_steady_packet(&connection, SteadyPacket::RemoveEntity(entity_id)).await;
+                        self.send_steady_packet(&connection, SteadyPacket::RemoveEntity(entity_id))
+                            .await;
                     }
                 }
                 WorldUpdate::MovePlayerEntity(entity_id, position, rotation, head_rotation) => {
-                    player_entity_movement_stack.entry(entity_id).or_insert(Vec::new()).push((position, rotation, head_rotation));
+                    player_entity_movement_stack
+                        .entry(entity_id)
+                        .or_insert(Vec::new())
+                        .push((position, rotation, head_rotation));
                 }
             }
         }
-        // the last player entity movement for each entity is the one that should be sent to the client
+
         for (entity_id, movement_stack) in player_entity_movement_stack {
             let movement = movement_stack.last().unwrap();
-            let connections = self.get_connections_affected_from_position(movement.0).await;
+            let connections = self
+                .get_connections_affected_from_position(movement.0)
+                .await;
             for connection in connections {
-                self.send_fast_packet(&connection, FastPacket::PlayerMoved(entity_id, movement.0, movement.1, movement.2)).await;
+                self.send_fast_packet(
+                    &connection,
+                    FastPacket::PlayerMoved(entity_id, movement.0, movement.1, movement.2),
+                )
+                .await;
             }
         }
     }
 
     pub async fn physics_thread(&self) {
-        loop {
-        }
+        loop {}
     }
 
     pub async fn player_and_physics_tick_thread(&self) {
-        let mut compensation_delta = 0.0;// do physics tick
+        let mut compensation_delta = 0.0;
         let mut delta;
         loop {
             {
@@ -914,7 +1061,13 @@ impl Server {
                 delta = (current_time - last_physics_tick).as_secs_f32();
                 if delta > 0.01 {
                     let mut worldmachine = self.worldmachine.lock().await;
-                    let res = worldmachine.physics.lock().unwrap().as_mut().unwrap().tick(delta + compensation_delta);
+                    let res = worldmachine
+                        .physics
+                        .lock()
+                        .unwrap()
+                        .as_mut()
+                        .unwrap()
+                        .tick(delta + compensation_delta);
                     if let Some(delta) = res {
                         compensation_delta += delta;
                     } else {
@@ -931,22 +1084,30 @@ impl Server {
                 let mut players = players.lock().await.clone();
                 for (_uuid, player) in players.iter_mut() {
                     let last_ping = match &player.connection {
-                        Connection::Local(_) => { SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() }
-                        Connection::Lan(_, con) => {
-                            con.last_successful_ping.load(Ordering::Relaxed)
-                        }
+                        Connection::Local(_) => SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        Connection::Lan(_, con) => con.last_successful_ping.load(Ordering::Relaxed),
                     };
-                    let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+                    let current_time = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
                     if current_time - last_ping > 60 {
-                        players_to_disconnect.push((player.connection.clone(), player.entity_id.unwrap()));
+                        players_to_disconnect
+                            .push((player.connection.clone(), player.entity_id.unwrap()));
                         continue;
                     }
                     if player.player.gravity_tick().await {
                         let mut worldmachine = self.worldmachine.lock().await;
-                        let _pos = player.player.get_position(player.entity_id, Some(&mut worldmachine)).await;
+                        let _pos = player
+                            .player
+                            .get_position(player.entity_id, Some(&mut worldmachine))
+                            .await;
                         drop(worldmachine);
                     }
-                    *player.player.snowball_cooldown.lock().await -= delta;
+                    *player.player.tball_cooldown.lock().await -= delta;
                     let position = player.player.get_position(None, None).await;
                     if position.y < -20.0 {
                         player.player.respawning.store(true, Ordering::Relaxed);
@@ -954,7 +1115,14 @@ impl Server {
                         let packet = SteadyPacket::Respawn(Vec3::new(0.0, 0.0, 0.0));
                         self.send_steady_packet(&player.connection, packet).await;
                         let mut worldmachine = self.worldmachine.lock().await;
-                        player.player.set_position(Vec3::new(0.0, 0.0, 0.0), player.entity_id, &mut worldmachine).await;
+                        player
+                            .player
+                            .set_position(
+                                Vec3::new(0.0, 0.0, 0.0),
+                                player.entity_id,
+                                &mut worldmachine,
+                            )
+                            .await;
                         drop(worldmachine);
                         respawning.store(false, Ordering::Relaxed);
                     }
@@ -974,18 +1142,11 @@ impl Server {
         }
     }
 
-    // loop
-    // check if there are any new connections to initialise
-    // if there are, initialise them
-    // if not, run the worldmachine
     pub async fn run(&mut self) {
         loop {
-            // lock worldmachine
             {
                 let mut worldmachine = self.worldmachine.lock().await;
-                let updates = {
-                    worldmachine.server_tick().await
-                };
+                let updates = { worldmachine.server_tick().await };
                 drop(worldmachine);
                 if let Some(updates) = updates {
                     self.handle_world_updates(updates).await;

@@ -1,6 +1,6 @@
-use gfx_maths::Vec3;
 use crate::worldmachine::components::COMPONENT_TYPE_LIGHT;
 use crate::worldmachine::ecs::{Component, ParameterValue};
+use gfx_maths::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Light {

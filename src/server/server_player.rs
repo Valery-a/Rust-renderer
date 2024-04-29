@@ -1,12 +1,12 @@
-use std::sync::{Arc};
+use std::sync::{ Arc };
 use mutex_timeouts::tokio::MutexWithTimeoutAuto as Mutex;
 use std::sync::atomic::AtomicBool;
 use gfx_maths::*;
 use tokio::time::Instant;
 use crate::helpers;
-use crate::physics::{ClimbingMode, Materials, PhysicsCharacterController, PhysicsSystem};
-use crate::server::{Connection, Server};
-use crate::worldmachine::{EntityId, WorldMachine, WorldUpdate};
+use crate::physics::{ ClimbingMode, Materials, PhysicsCharacterController, PhysicsSystem };
+use crate::server::{ Connection, Server };
+use crate::worldmachine::{ EntityId, WorldMachine, WorldUpdate };
 use crate::worldmachine::components::COMPONENT_TYPE_PLAYER;
 use crate::worldmachine::ecs::ParameterValue;
 use crate::worldmachine::player::MovementInfo;
@@ -60,7 +60,7 @@ pub struct ServerPlayer {
     pub uuid: Arc<String>,
     pub name: Arc<Mutex<String>>,
     physics: Arc<Mutex<PlayerPhysics>>,
-    pub snowball_cooldown: Arc<Mutex<f32>>,
+    pub tball_cooldown: Arc<Mutex<f32>>,
     pub pinging: Arc<AtomicBool>,
     pub respawning: Arc<AtomicBool>,
 }
@@ -71,7 +71,7 @@ impl Default for ServerPlayer {
             uuid: Arc::new("".to_string()),
             name: Arc::new(Mutex::new("".to_string())),
             physics: Arc::new(Mutex::new(PlayerPhysics::default())),
-            snowball_cooldown: Arc::new(Mutex::new(0.0)),
+            tball_cooldown: Arc::new(Mutex::new(0.0)),
             pinging: Arc::new(AtomicBool::new(false)),
             respawning: Arc::new(AtomicBool::new(false)),
         }
@@ -83,13 +83,15 @@ impl ServerPlayer {
         Self {
             uuid: Arc::new(uuid.to_string()),
             name: Arc::new(Mutex::new(name.to_string())),
-            physics: Arc::new(Mutex::new(PlayerPhysics {
-                position,
-                rotation,
-                scale,
-                ..Default::default()
-            })),
-            snowball_cooldown: Arc::new(Mutex::new(0.0)),
+            physics: Arc::new(
+                Mutex::new(PlayerPhysics {
+                    position,
+                    rotation,
+                    scale,
+                    ..Default::default()
+                })
+            ),
+            tball_cooldown: Arc::new(Mutex::new(0.0)),
             pinging: Arc::new(AtomicBool::new(false)),
             respawning: Arc::new(AtomicBool::new(false)),
         }
@@ -97,32 +99,57 @@ impl ServerPlayer {
 
     pub async fn init(&self, physics_system: PhysicsSystem) {
         let mut physics = self.physics.lock().await;
-        physics.physics_controller = physics_system.create_character_controller(DEFAULT_RADIUS, DEFAULT_HEIGHT, DEFAULT_STEPHEIGHT, Materials::Player);
+        physics.physics_controller = physics_system.create_character_controller(
+            DEFAULT_RADIUS,
+            DEFAULT_HEIGHT,
+            DEFAULT_STEPHEIGHT,
+            Materials::Player
+        );
         if physics.physics_controller.is_none() {
             warn!("failed to create physics controller for player");
         }
     }
 
-    /// attempts to move the player to the given position, returning true if the move was successful, or false if the move was too fast.
-    pub async fn attempt_position_change(&self, new_position: Vec3, displacement_vector: Vec3, new_rotation: Quaternion, new_head_rotation: Quaternion, movement_info: MovementInfo, entity_id: Option<EntityId>, worldmachine: Arc<mutex_timeouts::tokio::MutexWithTimeoutAuto<WorldMachine>>) -> (bool, Option<Vec3>) {
-        // TODO!! IMPORTANT!! remember to check that the player is not trying to move vertically, or through a wall! displacement_vector should not contain a y value, and the new_position should be checked against the world to make sure it is not inside a wall.
+    pub async fn attempt_position_change(
+        &self,
+        new_position: Vec3,
+        displacement_vector: Vec3,
+        new_rotation: Quaternion,
+        new_head_rotation: Quaternion,
+        movement_info: MovementInfo,
+        entity_id: Option<EntityId>,
+        worldmachine: Arc<mutex_timeouts::tokio::MutexWithTimeoutAuto<WorldMachine>>
+    ) -> (bool, Option<Vec3>) {
 
         let last_position = self.get_position(None, None).await;
 
-        // if any of the values are NaN, return false
         if new_position.x.is_nan() || new_position.y.is_nan() || new_position.z.is_nan() {
             return (false, Some(last_position));
         }
 
-        if new_rotation.x.is_nan() || new_rotation.y.is_nan() || new_rotation.z.is_nan() || new_rotation.w.is_nan() {
+        if
+            new_rotation.x.is_nan() ||
+            new_rotation.y.is_nan() ||
+            new_rotation.z.is_nan() ||
+            new_rotation.w.is_nan()
+        {
             return (false, Some(last_position));
         }
 
-        if new_head_rotation.x.is_nan() || new_head_rotation.y.is_nan() || new_head_rotation.z.is_nan() || new_head_rotation.w.is_nan() {
+        if
+            new_head_rotation.x.is_nan() ||
+            new_head_rotation.y.is_nan() ||
+            new_head_rotation.z.is_nan() ||
+            new_head_rotation.w.is_nan()
+        {
             return (false, Some(last_position));
         }
 
-        if displacement_vector.x.is_nan() || displacement_vector.y.is_nan() || displacement_vector.z.is_nan() {
+        if
+            displacement_vector.x.is_nan() ||
+            displacement_vector.y.is_nan() ||
+            displacement_vector.z.is_nan()
+        {
             return (false, Some(last_position));
         }
 
@@ -140,7 +167,10 @@ impl ServerPlayer {
 
         let mut displacement_vector = displacement_vector;
         displacement_vector.y = 0.0;
-        displacement_vector = helpers::clamp_magnitude(displacement_vector, 1.0 * physics.movement_speed);
+        displacement_vector = helpers::clamp_magnitude(
+            displacement_vector,
+            1.0 * physics.movement_speed
+        );
 
         let current_time = Instant::now();
         let last_move_call = physics.last_move_call;
@@ -148,15 +178,30 @@ impl ServerPlayer {
         displacement_vector *= delta;
         if delta >= 0.01 {
             physics.last_move_call = current_time;
-            let _final_movement = physics.physics_controller.as_mut().unwrap().move_by(displacement_vector, movement_info.jumped, Some(false), false, delta, delta);
+            let _final_movement = physics.physics_controller
+                .as_mut()
+                .unwrap()
+                .move_by(
+                    displacement_vector,
+                    movement_info.jumped,
+                    Some(false),
+                    false,
+                    delta,
+                    delta
+                );
         }
         let current_time = Instant::now();
-        let delta = current_time.duration_since(Instant::from(worldmachine.lock().await.last_physics_update)).as_secs_f32();
+        let delta = current_time
+            .duration_since(Instant::from(worldmachine.lock().await.last_physics_update))
+            .as_secs_f32();
         if delta >= 0.01 {
             worldmachine.lock().await.physics.lock().unwrap().as_mut().unwrap().tick(delta);
             worldmachine.lock().await.last_physics_update = std::time::Instant::from(current_time);
         }
-        let new_position_calculated = physics.physics_controller.as_mut().unwrap().get_foot_position();
+        let new_position_calculated = physics.physics_controller
+            .as_mut()
+            .unwrap()
+            .get_foot_position();
         let distance = helpers::distance(new_position_calculated, new_position);
         if !physics.physics_controller.as_ref().unwrap().is_on_ground() {
             physics.height_gained_since_grounded += physics.last_height - new_position_calculated.y;
@@ -217,7 +262,12 @@ impl ServerPlayer {
         previous_position != new_position
     }
 
-    pub async fn set_position(&self, position: Vec3, entity_id: Option<EntityId>, worldmachine: &mut WorldMachine) {
+    pub async fn set_position(
+        &self,
+        position: Vec3,
+        entity_id: Option<EntityId>,
+        worldmachine: &mut WorldMachine
+    ) {
         let mut physics = self.physics.lock().await;
         physics.position = position;
         if let Some(physics_controller) = physics.physics_controller.as_ref() {
@@ -229,13 +279,29 @@ impl ServerPlayer {
                 warn!("failed to set position of entity: {}", entity_id);
             } else {
                 let entity_index = entity_index.unwrap();
-                worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "position", ParameterValue::Vec3(position));
-                worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, position, physics.rotation, physics.head_rotation)).await;
+                worldmachine.world.entities[entity_index].set_component_parameter(
+                    COMPONENT_TYPE_PLAYER.clone(),
+                    "position",
+                    ParameterValue::Vec3(position)
+                );
+                worldmachine.queue_update(
+                    WorldUpdate::MovePlayerEntity(
+                        entity_id,
+                        position,
+                        physics.rotation,
+                        physics.head_rotation
+                    )
+                ).await;
             }
         }
     }
 
-    pub async fn set_rotation(&self, rotation: Quaternion, entity_id: Option<EntityId>, worldmachine: &mut WorldMachine) {
+    pub async fn set_rotation(
+        &self,
+        rotation: Quaternion,
+        entity_id: Option<EntityId>,
+        worldmachine: &mut WorldMachine
+    ) {
         let mut physics = self.physics.lock().await;
         physics.rotation = rotation;
         if let Some(entity_id) = entity_id {
@@ -244,13 +310,29 @@ impl ServerPlayer {
                 warn!("failed to set rotation of entity: {}", entity_id);
             } else {
                 let entity_index = entity_index.unwrap();
-                worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "rotation", ParameterValue::Quaternion(rotation));
-                worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, physics.position, rotation, physics.head_rotation)).await;
+                worldmachine.world.entities[entity_index].set_component_parameter(
+                    COMPONENT_TYPE_PLAYER.clone(),
+                    "rotation",
+                    ParameterValue::Quaternion(rotation)
+                );
+                worldmachine.queue_update(
+                    WorldUpdate::MovePlayerEntity(
+                        entity_id,
+                        physics.position,
+                        rotation,
+                        physics.head_rotation
+                    )
+                ).await;
             }
         }
     }
 
-    pub async fn set_head_rotation(&self, rotation: Quaternion, entity_id: Option<EntityId>, worldmachine: &mut WorldMachine) {
+    pub async fn set_head_rotation(
+        &self,
+        rotation: Quaternion,
+        entity_id: Option<EntityId>,
+        worldmachine: &mut WorldMachine
+    ) {
         let mut physics = self.physics.lock().await;
         physics.head_rotation = rotation;
         if let Some(entity_id) = entity_id {
@@ -259,13 +341,29 @@ impl ServerPlayer {
                 warn!("failed to set head rotation of entity: {}", entity_id);
             } else {
                 let entity_index = entity_index.unwrap();
-                worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "head_rotation", ParameterValue::Quaternion(rotation));
-                worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, physics.position, physics.rotation, rotation)).await;
+                worldmachine.world.entities[entity_index].set_component_parameter(
+                    COMPONENT_TYPE_PLAYER.clone(),
+                    "head_rotation",
+                    ParameterValue::Quaternion(rotation)
+                );
+                worldmachine.queue_update(
+                    WorldUpdate::MovePlayerEntity(
+                        entity_id,
+                        physics.position,
+                        physics.rotation,
+                        rotation
+                    )
+                ).await;
             }
         }
     }
 
-    pub async fn set_scale(&self, scale: Vec3, entity_id: Option<EntityId>, worldmachine: &mut WorldMachine) {
+    pub async fn set_scale(
+        &self,
+        scale: Vec3,
+        entity_id: Option<EntityId>,
+        worldmachine: &mut WorldMachine
+    ) {
         let mut physics = self.physics.lock().await;
         physics.scale = scale;
         if let Some(entity_id) = entity_id {
@@ -274,13 +372,21 @@ impl ServerPlayer {
                 warn!("failed to set scale of entity: {}", entity_id);
             } else {
                 let entity_index = entity_index.unwrap();
-                worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "scale", ParameterValue::Vec3(scale));
+                worldmachine.world.entities[entity_index].set_component_parameter(
+                    COMPONENT_TYPE_PLAYER.clone(),
+                    "scale",
+                    ParameterValue::Vec3(scale)
+                );
                 worldmachine.queue_update(WorldUpdate::SetScale(entity_id, scale)).await;
             }
         }
     }
 
-    pub async fn get_position(&self, entity_id: Option<EntityId>, worldmachine: Option<&mut WorldMachine>) -> Vec3 {
+    pub async fn get_position(
+        &self,
+        entity_id: Option<EntityId>,
+        worldmachine: Option<&mut WorldMachine>
+    ) -> Vec3 {
         let mut physics = self.physics.lock().await;
         let position = if let Some(physics_controller) = physics.physics_controller.as_ref() {
             physics_controller.get_foot_position()
@@ -295,15 +401,30 @@ impl ServerPlayer {
                     warn!("failed to get position of entity: {}", entity_id);
                 } else {
                     let entity_index = entity_index.unwrap();
-                    worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "position", ParameterValue::Vec3(position));
-                    worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, position, physics.rotation, physics.head_rotation)).await;
+                    worldmachine.world.entities[entity_index].set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "position",
+                        ParameterValue::Vec3(position)
+                    );
+                    worldmachine.queue_update(
+                        WorldUpdate::MovePlayerEntity(
+                            entity_id,
+                            position,
+                            physics.rotation,
+                            physics.head_rotation
+                        )
+                    ).await;
                 }
             }
         }
         position
     }
 
-    pub async fn get_rotation(&self, entity_id: Option<EntityId>, worldmachine: Option<&mut WorldMachine>) -> Quaternion {
+    pub async fn get_rotation(
+        &self,
+        entity_id: Option<EntityId>,
+        worldmachine: Option<&mut WorldMachine>
+    ) -> Quaternion {
         let physics = self.physics.lock().await;
         if let Some(entity_id) = entity_id {
             if let Some(worldmachine) = worldmachine {
@@ -312,15 +433,30 @@ impl ServerPlayer {
                     warn!("failed to get rotation of entity: {}", entity_id);
                 } else {
                     let entity_index = entity_index.unwrap();
-                    worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "rotation", ParameterValue::Quaternion(physics.rotation));
-                    worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, physics.position, physics.rotation, physics.head_rotation)).await;
+                    worldmachine.world.entities[entity_index].set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "rotation",
+                        ParameterValue::Quaternion(physics.rotation)
+                    );
+                    worldmachine.queue_update(
+                        WorldUpdate::MovePlayerEntity(
+                            entity_id,
+                            physics.position,
+                            physics.rotation,
+                            physics.head_rotation
+                        )
+                    ).await;
                 }
             }
         }
         physics.rotation
     }
 
-    pub async fn get_head_rotation(&self, entity_id: Option<EntityId>, worldmachine: Option<&mut WorldMachine>) -> Quaternion {
+    pub async fn get_head_rotation(
+        &self,
+        entity_id: Option<EntityId>,
+        worldmachine: Option<&mut WorldMachine>
+    ) -> Quaternion {
         let physics = self.physics.lock().await;
         if let Some(entity_id) = entity_id {
             if let Some(worldmachine) = worldmachine {
@@ -329,15 +465,30 @@ impl ServerPlayer {
                     warn!("failed to get head rotation of entity: {}", entity_id);
                 } else {
                     let entity_index = entity_index.unwrap();
-                    worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "head_rotation", ParameterValue::Quaternion(physics.head_rotation));
-                    worldmachine.queue_update(WorldUpdate::MovePlayerEntity(entity_id, physics.position, physics.rotation, physics.head_rotation)).await;
+                    worldmachine.world.entities[entity_index].set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "head_rotation",
+                        ParameterValue::Quaternion(physics.head_rotation)
+                    );
+                    worldmachine.queue_update(
+                        WorldUpdate::MovePlayerEntity(
+                            entity_id,
+                            physics.position,
+                            physics.rotation,
+                            physics.head_rotation
+                        )
+                    ).await;
                 }
             }
         }
         physics.head_rotation
     }
 
-    pub async fn get_scale(&self, entity_id: Option<EntityId>, worldmachine: Option<&mut WorldMachine>) -> Vec3 {
+    pub async fn get_scale(
+        &self,
+        entity_id: Option<EntityId>,
+        worldmachine: Option<&mut WorldMachine>
+    ) -> Vec3 {
         let physics = self.physics.lock().await;
         if let Some(entity_id) = entity_id {
             if let Some(worldmachine) = worldmachine {
@@ -346,8 +497,14 @@ impl ServerPlayer {
                     warn!("failed to get scale of entity: {}", entity_id);
                 } else {
                     let entity_index = entity_index.unwrap();
-                    worldmachine.world.entities[entity_index].set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "scale", ParameterValue::Vec3(physics.scale));
-                    worldmachine.queue_update(WorldUpdate::SetScale(entity_id, physics.scale)).await;
+                    worldmachine.world.entities[entity_index].set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "scale",
+                        ParameterValue::Vec3(physics.scale)
+                    );
+                    worldmachine.queue_update(
+                        WorldUpdate::SetScale(entity_id, physics.scale)
+                    ).await;
                 }
             }
         }

@@ -1,41 +1,53 @@
-use std::any::Any;
-use std::borrow::{Borrow, BorrowMut};
-use halfbrown::HashMap;
-use std::collections::{VecDeque};
-use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::time::Instant;
 use fyrox_sound::context::SoundContext;
-use gfx_maths::{Quaternion, Vec2, Vec3};
-use gl_matrix::common::Quat;
-use serde::{Deserialize, Serialize};
-//use tokio::sync::{mpsc, Mutex};
+use gfx_maths::{ Quaternion, Vec3 };
+use halfbrown::HashMap;
+use serde::{ Deserialize, Serialize };
+use std::borrow::{ Borrow, BorrowMut };
+use std::collections::VecDeque;
+use std::ops::Deref;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Instant;
+
+use crate::audio::AudioBackend;
+use crate::common_anim::animation_move::MoveAnim;
+use crate::physics::{ Materials, PhysicsSystem };
+use crate::server::server_player::ServerPlayerContainer;
+use crate::server::{
+    ConnectionClientside,
+    ConnectionUUID,
+    FastPacket,
+    FastPacketData,
+    NameRejectionReason,
+    SteadyPacket,
+    SteadyPacketData,
+};
+use crate::ui_defs::chat;
+use crate::worldmachine::components::{
+    COMPONENT_TYPE_BOX_COLLIDER,
+    COMPONENT_TYPE_JUKEBOX,
+    COMPONENT_TYPE_LIGHT,
+    COMPONENT_TYPE_MESH_RENDERER,
+    COMPONENT_TYPE_PLAYER,
+    COMPONENT_TYPE_TERRAIN,
+    COMPONENT_TYPE_TRANSFORM,
+    COMPONENT_TYPE_TRIGGER,
+};
+use crate::worldmachine::ecs::*;
+use crate::worldmachine::player::{ MovementInfo, Player, PlayerContainer };
+use crate::worldmachine::MapLoadError::FolderNotFound;
+use crate::{ server, MutRenderer };
 use mutex_timeouts::tokio::MutexWithTimeoutAuto as Mutex;
 use tokio::sync::mpsc::error::TryRecvError;
-use crate::camera::Camera;
-use crate::{ht_renderer, renderer, server};
-use crate::animgraph::{AnimGraph, AnimGraphNode};
-use crate::audio::AudioBackend;
-use crate::common_anim::animation_move::{Features, MoveAnim};
-use crate::helpers::{add_quaternion, from_q64, multiply_quaternion, rotate_vector_by_quaternion, to_q64};
-use crate::physics::{Materials, PhysicsSystem};
-use crate::server::{ConnectionClientside, ConnectionUUID, FastPacket, FastPacketData, NameRejectionReason, SteadyPacket, SteadyPacketData};
-use crate::server::server_player::{ServerPlayer, ServerPlayerContainer};
-use crate::ui_defs::chat;
-use crate::worldmachine::components::{COMPONENT_TYPE_BOX_COLLIDER, COMPONENT_TYPE_JUKEBOX, COMPONENT_TYPE_LIGHT, COMPONENT_TYPE_MESH_RENDERER, COMPONENT_TYPE_PLAYER, COMPONENT_TYPE_TERRAIN, COMPONENT_TYPE_TRANSFORM, COMPONENT_TYPE_TRIGGER, Light, MeshRenderer, Terrain, Transform};
-use crate::worldmachine::ecs::*;
-use crate::worldmachine::MapLoadError::FolderNotFound;
-use crate::worldmachine::player::{MovementInfo, Player, PlayerContainer};
-use crate::worldmachine::snowballs::Snowball;
 
-pub mod ecs;
+use self::throwballs::ThrowingBall;
+
 pub mod components;
+pub mod ecs;
 pub mod entities;
 pub mod helpers;
 pub mod player;
-pub mod playermodel;
-pub mod snowballs;
+pub mod throwballs;
 
 pub type EntityId = u64;
 
@@ -65,13 +77,12 @@ pub enum WorldUpdate {
 
 #[derive(Clone, Debug)]
 pub enum ClientUpdate {
-    // internal
     IDisplaced((Vec3, Option<MovementInfo>)),
     ILooked(Quaternion),
-    // external
-    IMoved(Vec3, Option<Vec3>, Quaternion, Quaternion, Option<MovementInfo>), // position, displacement vector, rotation, head rotation, extra movement info
+
+    IMoved(Vec3, Option<Vec3>, Quaternion, Quaternion, Option<MovementInfo>),
     IJumped,
-    IThrewSnowball,
+    IThrewtball,
 }
 
 #[derive(Clone, Debug)]
@@ -100,23 +111,22 @@ impl Clone for World {
 
 pub struct WorldMachine {
     pub world: World,
-    pub snowballs: Vec<Snowball>,
+    pub tballs: Vec<ThrowingBall>,
     pub physics: Arc<mutex_timeouts::std::MutexWithTimeout<Option<PhysicsSystem>>>,
     pub last_physics_update: std::time::Instant,
     pub game_data_path: String,
     pub counter: f32,
     pub entities_wanting_to_load_things: Vec<usize>,
-    // index
+
     lights_changed: bool,
     is_server: bool,
     server_connection: Option<crate::server::ConnectionClientside>,
     world_update_queue: Arc<Mutex<VecDeque<WorldUpdate>>>,
     client_update_queue: Arc<Mutex<VecDeque<ClientUpdate>>>,
     player: Option<PlayerContainer>,
-    ignore_this_entity: Option<EntityId>, // should be the player entity that other players will see, we don't want it's updates to be received because we already know them
-    pub players: Option<Arc<Mutex<HashMap<ConnectionUUID, ServerPlayerContainer>>>>, // not used clientside
+    ignore_this_entity: Option<EntityId>,
+    pub players: Option<Arc<Mutex<HashMap<ConnectionUUID, ServerPlayerContainer>>>>,
 
-    // only used clientside
     last_ping: Instant,
 }
 
@@ -130,7 +140,7 @@ impl Default for WorldMachine {
         };
         Self {
             world,
-            snowballs: vec![],
+            tballs: vec![],
             physics: Arc::new(mutex_timeouts::std::MutexWithTimeout::new(None)),
             last_physics_update: std::time::Instant::now(),
             game_data_path: String::from(""),
@@ -164,7 +174,6 @@ impl WorldMachine {
         self.blank_slate(is_server);
     }
 
-    // resets the world to a blank slate
     pub fn blank_slate(&mut self, is_server: bool) {
         {
             let mut eid_manager = ENTITY_ID_MANAGER.lock().unwrap();
@@ -182,14 +191,13 @@ impl WorldMachine {
         if !std::path::Path::new(&map_dir).exists() {
             return Err(FolderNotFound(map_dir));
         }
-        let mut deserializer = rmp_serde::Deserializer::new(std::fs::File::open(format!("{}/worlddef", map_dir)).unwrap());
+        let mut deserializer = rmp_serde::Deserializer::new(
+            std::fs::File::open(format!("{}/worlddef", map_dir)).unwrap()
+        );
         let world_def: WorldDef = Deserialize::deserialize(&mut deserializer).unwrap();
 
-        // load entities
         for entity in world_def.world.entities {
-            let mut entity_new = unsafe {
-                Entity::new(entity.name.as_str())
-            };
+            let mut entity_new = unsafe { Entity::new(entity.name.as_str()) };
             for component in entity.components {
                 let component_type = ComponentType::get(component.get_type().name);
                 if component_type.is_none() {
@@ -206,10 +214,8 @@ impl WorldMachine {
 
         self.world.current_map = map_name.to_string();
 
-        // initialise entities
         self.initialise_entities();
 
-        // if we're a server, queue entity init packets
         if self.is_server {
             let mut entity_init_packets = Vec::new();
             for entity in &self.world.entities {
@@ -218,7 +224,6 @@ impl WorldMachine {
             self.queue_updates(entity_init_packets);
         }
 
-        // load systems
         for system in world_def.world.systems {
             self.world.systems.push(system);
         }
@@ -226,7 +231,6 @@ impl WorldMachine {
         Ok(())
     }
 
-    /// this should only be called once per map load
     pub fn initialise_entities(&mut self) {
         for entity in &mut self.world.entities {
             if let Some(box_collider) = entity.get_component(COMPONENT_TYPE_BOX_COLLIDER.clone()) {
@@ -256,8 +260,16 @@ impl WorldMachine {
                     position += trans_position;
                     scale *= trans_scale;
                 }
-                let box_collider_physics = self.physics.lock().unwrap().as_ref().unwrap().create_box_collider_static(position, scale, Materials::Player).unwrap();
-                box_collider_physics.add_self_to_scene(self.physics.lock().unwrap().clone().unwrap());
+                let box_collider_physics = self.physics
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .create_box_collider_static(position, scale, Materials::Player)
+                    .unwrap();
+                box_collider_physics.add_self_to_scene(
+                    self.physics.lock().unwrap().clone().unwrap()
+                );
             }
             if let Some(trigger) = entity.get_component(COMPONENT_TYPE_TRIGGER.clone()) {
                 let trigger = trigger.borrow();
@@ -286,9 +298,19 @@ impl WorldMachine {
                     position += trans_position;
                     scale *= trans_scale;
                 }
-                let trigger_physics = self.physics.lock().unwrap().as_ref().unwrap().create_trigger_shape(position, scale, Materials::Player).unwrap();
+                let trigger_physics = self.physics
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .create_trigger_shape(position, scale, Materials::Player)
+                    .unwrap();
                 trigger_physics.add_self_to_scene(self.physics.lock().unwrap().clone().unwrap());
-                debug!("added trigger to physics scene with position: {:?} and scale: {:?}", position, scale);
+                debug!(
+                    "added trigger to physics scene with position: {:?} and scale: {:?}",
+                    position,
+                    scale
+                );
             }
         }
     }
@@ -312,30 +334,16 @@ impl WorldMachine {
         None
     }
 
-    /*
-    pub fn set_entity_position(&mut self, entity_id: EntityId, position: Vec3) {
-        let entity_index = self.get_entity_index(entity_id).unwrap();
-        let entity = self.world.entities[entity_index].borrow_mut();
-        let res = entity.set_component_parameter(COMPONENT_TYPE_TRANSFORM.clone(), "position", ParameterValue::Vec3(position));
-        if res.is_none() {
-            warn!("attempted to set entity position on an entity that has no transform component");
-        }
-    }
-     */
-
     pub fn remove_entity_at_index(&mut self, index: usize) {
         self.world.entities.remove(index);
     }
 
     pub fn send_lights_to_renderer(&mut self) -> Option<Vec<crate::light::Light>> {
-        //if !self.lights_changed {
-        //    return Option::None;
-        //}
         let mut lights = Vec::new();
         for entity in &self.world.entities {
             let components = entity.get_components();
             let mut light_component = None;
-            let mut transform_component = None; // if we have a transform component, this will be added to the light's position
+            let mut transform_component = None;
             for component in components {
                 if component.get_type() == COMPONENT_TYPE_LIGHT.clone() {
                     light_component = Some(component);
@@ -465,7 +473,7 @@ impl WorldMachine {
     }
 
     async fn initialise_player(&mut self, packet: SteadyPacket) {
-        if let SteadyPacket::InitialisePlayer(uuid, id,  name, position, rotation, scale) = packet {
+        if let SteadyPacket::InitialisePlayer(uuid, id, name, position, rotation, scale) = packet {
         }
     }
 
@@ -488,9 +496,13 @@ impl WorldMachine {
         }).await;
     }
 
-    pub async fn throw_snowball(&mut self) {
+    pub async fn throw_tball(&mut self) {
         self.send_steady_message(SteadyPacketData {
-            packet: SteadyPacket::ThrowSnowball(String::new(), Vec3::default(), Vec3::default()),
+            packet: SteadyPacket::ThrowThrowAballll(
+                String::new(),
+                Vec3::default(),
+                Vec3::default()
+            ),
             uuid: server::generate_uuid(),
         }).await;
     }
@@ -508,7 +520,6 @@ impl WorldMachine {
                     chat::write_chat("engine".to_string(), "a new player has joined!".to_string());
                 }
 
-                // check if we already have this entity
                 if self.get_entity(entity_id).is_none() {
                     let mut entity = unsafe {
                         Entity::new_with_id(entity_data.name.as_str(), entity_id)
@@ -517,7 +528,6 @@ impl WorldMachine {
                     self.world.entities.push(entity);
                     self.entities_wanting_to_load_things.push(self.world.entities.len() - 1);
                 } else {
-                    // we already have this entity, so we need to update it
                     let entity_index = self.get_entity_index(entity_id).unwrap();
                     let entity = self.world.entities.get_mut(entity_index).unwrap();
                     entity.copy_data_from_other_entity(&entity_data);
@@ -531,12 +541,19 @@ impl WorldMachine {
             SteadyPacket::InitialisePlayer(uuid, id, name, position, rotation, scale) => {
                 debug!("initialise player message received");
                 let mut player = Player::default();
-                player.init(self.physics.lock().unwrap().clone().unwrap(), uuid, name.clone(), position, rotation, scale);
+                player.init(
+                    self.physics.lock().unwrap().clone().unwrap(),
+                    uuid,
+                    name.clone(),
+                    position,
+                    rotation,
+                    scale
+                );
                 chat::CHAT_BUFFER.lock().unwrap().my_name = name;
                 self.ignore_this_entity = Some(id);
                 self.player = Some(PlayerContainer {
                     player,
-                    entity_id: None
+                    entity_id: None,
                 });
             }
             SteadyPacket::FinaliseMapLoad => {
@@ -563,20 +580,27 @@ impl WorldMachine {
                     }
                 }
                 if !dont_show {
-                    let players = self.world.entities.iter().filter(|e| e.has_component(COMPONENT_TYPE_PLAYER.clone())).collect::<Vec<&Entity>>();
+                    let players = self.world.entities
+                        .iter()
+                        .filter(|e| e.has_component(COMPONENT_TYPE_PLAYER.clone()))
+                        .collect::<Vec<&Entity>>();
                     let name = {
                         let mut namebuf = None;
                         for player in players {
-                            if let Some(player_component) = player.get_component(COMPONENT_TYPE_PLAYER.clone()) {
+                            if
+                                let Some(player_component) = player.get_component(
+                                    COMPONENT_TYPE_PLAYER.clone()
+                                )
+                            {
                                 let uuid = player_component.get_parameter("uuid");
                                 let uuid = match &uuid.value {
                                     ParameterValue::String(uuid) => uuid,
-                                    _ => panic!("uuid is not a string")
+                                    _ => panic!("uuid is not a string"),
                                 };
                                 let name = player_component.get_parameter("name");
                                 let name = match &name.value {
                                     ParameterValue::String(name) => name,
-                                    _ => panic!("name is not a string")
+                                    _ => panic!("name is not a string"),
                                 };
 
                                 if uuid == &who_sent {
@@ -595,24 +619,35 @@ impl WorldMachine {
                 }
             }
             SteadyPacket::SetName(who_sent, new_name) => {
-                let players = self.world.entities.iter_mut().filter(|e| e.has_component(COMPONENT_TYPE_PLAYER.clone())).collect::<Vec<&mut Entity>>();
+                let players = self.world.entities
+                    .iter_mut()
+                    .filter(|e| e.has_component(COMPONENT_TYPE_PLAYER.clone()))
+                    .collect::<Vec<&mut Entity>>();
                 let name = {
                     let mut namebuf = None;
                     for player in players {
-                        if let Some(player_component) = player.get_component(COMPONENT_TYPE_PLAYER.clone()).cloned() {
+                        if
+                            let Some(player_component) = player
+                                .get_component(COMPONENT_TYPE_PLAYER.clone())
+                                .cloned()
+                        {
                             let uuid = player_component.get_parameter("uuid");
                             let uuid = match &uuid.value {
                                 ParameterValue::String(uuid) => uuid,
-                                _ => panic!("uuid is not a string")
+                                _ => panic!("uuid is not a string"),
                             };
                             let name = player_component.get_parameter("name");
                             let name = match &name.value {
                                 ParameterValue::String(name) => name,
-                                _ => panic!("name is not a string")
+                                _ => panic!("name is not a string"),
                             };
 
                             if uuid == &who_sent {
-                                player.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "name", ParameterValue::String(new_name.clone()));
+                                player.set_component_parameter(
+                                    COMPONENT_TYPE_PLAYER.clone(),
+                                    "name",
+                                    ParameterValue::String(new_name.clone())
+                                );
                                 namebuf = Some(name.clone());
                                 break;
                             }
@@ -621,33 +656,48 @@ impl WorldMachine {
                     namebuf
                 };
                 if let Some(name) = name {
-                    chat::write_chat("server".to_string(), format!("{} is now known as {}", name, new_name));
+                    chat::write_chat(
+                        "server".to_string(),
+                        format!("{} is now known as {}", name, new_name)
+                    );
                 } else {
-                    chat::write_chat("server".to_string(), format!("{} is now known as {}", who_sent, new_name));
+                    chat::write_chat(
+                        "server".to_string(),
+                        format!("{} is now known as {}", who_sent, new_name)
+                    );
                 }
             }
-            SteadyPacket::NameRejected(reason) => {
+            SteadyPacket::NameRejected(reason) =>
                 match reason {
                     NameRejectionReason::IllegalWord => {
-                        chat::write_chat("server".to_string(), "whoa there! we don't use that kind of language here!".to_string());
+                        chat::write_chat(
+                            "server".to_string(),
+                            "whoa there! we don't use that kind of language here!".to_string()
+                        );
                     }
                     NameRejectionReason::Taken => {
-                        chat::write_chat("server".to_string(), "your name was rejected because it is already taken".to_string());
+                        chat::write_chat(
+                            "server".to_string(),
+                            "your name was rejected because it is already taken".to_string()
+                        );
                     }
                 }
-            }
-            SteadyPacket::ThrowSnowball(uuid, position, initial_velocity) => {
-                // do we already have this snowball?
+            SteadyPacket::ThrowThrowAballll(uuid, position, initial_velocity) => {
                 let mut already_have = false;
-                for snowball in &self.snowballs {
-                    if snowball.uuid == uuid {
+                for tball in &self.tballs {
+                    if tball.uuid == uuid {
                         already_have = true;
                         break;
                     }
                 }
                 if !already_have {
-                    let snowball = Snowball::new_with_uuid(uuid, position, initial_velocity, self.physics.lock().unwrap().as_ref().unwrap());
-                    self.snowballs.push(snowball);
+                    let tball = ThrowingBall::new_with_uuid(
+                        uuid,
+                        position,
+                        initial_velocity,
+                        self.physics.lock().unwrap().as_ref().unwrap()
+                    );
+                    self.tballs.push(tball);
                 }
             }
             SteadyPacket::Respawn(position) => {
@@ -665,7 +715,7 @@ impl WorldMachine {
             match connection {
                 ConnectionClientside::Local(connection) => {
                     let mut connection = connection.lock().await;
-                    // check if we have any messages to process
+
                     let try_recv = connection.steady_update_receiver.try_recv();
                     if let Ok(message) = try_recv {
                         drop(connection);
@@ -677,7 +727,6 @@ impl WorldMachine {
                     }
                 }
                 ConnectionClientside::Lan(connection) => {
-                    // check if we have any messages to process
                     let try_recv = connection.attempt_receive_steady_and_deserialise().await;
                     if let Some(message) = try_recv {
                         self.handle_steady_message(message.clone().packet).await;
@@ -697,7 +746,11 @@ impl WorldMachine {
                 }
                 if let Some(entity_index) = self.get_entity_index(entity_id) {
                     let entity = self.world.entities.get_mut(entity_index).unwrap();
-                    let transform = entity.set_component_parameter(COMPONENT_TYPE_TRANSFORM.clone(), "position", ParameterValue::Vec3(vec3));
+                    let transform = entity.set_component_parameter(
+                        COMPONENT_TYPE_TRANSFORM.clone(),
+                        "position",
+                        ParameterValue::Vec3(vec3)
+                    );
                     if transform.is_none() {
                         warn!("process_fast_messages: failed to set transform rotation");
                     }
@@ -711,7 +764,11 @@ impl WorldMachine {
                 }
                 if let Some(entity_index) = self.get_entity_index(entity_id) {
                     let entity = self.world.entities.get_mut(entity_index).unwrap();
-                    let transform = entity.set_component_parameter(COMPONENT_TYPE_TRANSFORM.clone(), "rotation", ParameterValue::Quaternion(quat));
+                    let transform = entity.set_component_parameter(
+                        COMPONENT_TYPE_TRANSFORM.clone(),
+                        "rotation",
+                        ParameterValue::Quaternion(quat)
+                    );
                     if transform.is_none() {
                         warn!("process_fast_messages: failed to set transform rotation");
                     }
@@ -725,7 +782,11 @@ impl WorldMachine {
                 }
                 if let Some(entity_index) = self.get_entity_index(entity_id) {
                     let entity = self.world.entities.get_mut(entity_index).unwrap();
-                    let transform = entity.set_component_parameter(COMPONENT_TYPE_TRANSFORM.clone(), "scale", ParameterValue::Vec3(vec3));
+                    let transform = entity.set_component_parameter(
+                        COMPONENT_TYPE_TRANSFORM.clone(),
+                        "scale",
+                        ParameterValue::Vec3(vec3)
+                    );
                     if transform.is_none() {
                         warn!("process_fast_messages: failed to set transform scale");
                     }
@@ -743,7 +804,6 @@ impl WorldMachine {
                     if let Some(prev_transform) = prev_transform {
                         let prev_position = prev_transform.get_parameter("position");
 
-                        // calculate the difference between the previous and new position
                         let prev_position = match prev_position.value {
                             ParameterValue::Vec3(vec3) => vec3,
                             _ => {
@@ -756,36 +816,67 @@ impl WorldMachine {
                         let forward_mag = position_diff.dot(new_rotation.forward());
                         let strafe_mag = position_diff.dot(new_rotation.right());
                         const threshold: f32 = 0.01;
-                        let forward_mag = if forward_mag.abs() < threshold { 0.0 } else { 1.0 * forward_mag.signum() };
-                        let strafe_mag = if strafe_mag.abs() < threshold { 0.0 } else { 1.0 * strafe_mag.signum() };
+                        let forward_mag = if forward_mag.abs() < threshold {
+                            0.0
+                        } else {
+                            1.0 * forward_mag.signum()
+                        };
+                        let strafe_mag = if strafe_mag.abs() < threshold {
+                            0.0
+                        } else {
+                            1.0 * strafe_mag.signum()
+                        };
 
-                        // set speed and strafe for animation
-                        let player_component = entity.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "speed", ParameterValue::Float(forward_mag as f64));
+                        let player_component = entity.set_component_parameter(
+                            COMPONENT_TYPE_PLAYER.clone(),
+                            "speed",
+                            ParameterValue::Float(forward_mag as f64)
+                        );
                         if player_component.is_none() {
                             warn!("process_fast_messages: failed to set transform position");
                         }
-                        let player_component = entity.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "strafe", ParameterValue::Float(strafe_mag as f64));
+                        let player_component = entity.set_component_parameter(
+                            COMPONENT_TYPE_PLAYER.clone(),
+                            "strafe",
+                            ParameterValue::Float(strafe_mag as f64)
+                        );
                         if player_component.is_none() {
                             warn!("process_fast_messages: failed to set transform position");
                         }
                     }
 
-                    let player_component = entity.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "position", ParameterValue::Vec3(new_position));
+                    let player_component = entity.set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "position",
+                        ParameterValue::Vec3(new_position)
+                    );
                     if player_component.is_none() {
                         warn!("process_fast_messages: failed to set transform position");
                     }
-                    let player_component = entity.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "rotation", ParameterValue::Quaternion(new_rotation));
+                    let player_component = entity.set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "rotation",
+                        ParameterValue::Quaternion(new_rotation)
+                    );
                     if player_component.is_none() {
                         warn!("process_fast_messages: failed to set transform rotation");
                     }
-                    let player_component = entity.set_component_parameter(COMPONENT_TYPE_PLAYER.clone(), "head_rotation", ParameterValue::Quaternion(new_head_rotation));
+                    let player_component = entity.set_component_parameter(
+                        COMPONENT_TYPE_PLAYER.clone(),
+                        "head_rotation",
+                        ParameterValue::Quaternion(new_head_rotation)
+                    );
                     if player_component.is_none() {
                         warn!("process_fast_messages: failed to set transform rotation");
                     }
-
                 }
             }
-            FastPacket::EntitySetParameter(entity_id, component_type, parameter_name, parameter_value) => {
+            FastPacket::EntitySetParameter(
+                entity_id,
+                component_type,
+                parameter_name,
+                parameter_value,
+            ) => {
                 if let Some(ignore) = self.ignore_this_entity {
                     if entity_id == ignore {
                         return;
@@ -793,7 +884,11 @@ impl WorldMachine {
                 }
                 if let Some(entity_index) = self.get_entity_index(entity_id) {
                     let entity = self.world.entities.get_mut(entity_index).unwrap();
-                    let component = entity.set_component_parameter(component_type, parameter_name.as_str(), parameter_value);
+                    let component = entity.set_component_parameter(
+                        component_type,
+                        parameter_name.as_str(),
+                        parameter_value
+                    );
                     if component.is_none() {
                         warn!("process_fast_messages: failed to set component parameter");
                     }
@@ -801,13 +896,17 @@ impl WorldMachine {
             }
             FastPacket::PlayerFuckYouMoveHere(new_position) => {
                 if let Some(player) = self.player.as_mut() {
-                    warn!("we moved too fast, so the server is telling us to move to a new position");
+                    warn!(
+                        "we moved too fast, so the server is telling us to move to a new position"
+                    );
                     player.player.set_position(new_position);
                 }
             }
             FastPacket::PlayerFuckYouSetRotation(new_rotation) => {
                 if let Some(player) = self.player.as_mut() {
-                    warn!("we did something wrong, so the server is telling us to set our rotation");
+                    warn!(
+                        "we did something wrong, so the server is telling us to set our rotation"
+                    );
                     player.player.set_rotation(new_rotation);
                     player.player.set_head_rotation(new_rotation);
                 }
@@ -823,7 +922,7 @@ impl WorldMachine {
             match connection {
                 ConnectionClientside::Local(connection) => {
                     let mut connection = connection.lock().await;
-                    // check if we have any messages to process
+
                     let try_recv = connection.fast_update_receiver.try_recv();
                     drop(connection);
                     if let Ok(message) = try_recv {
@@ -835,7 +934,6 @@ impl WorldMachine {
                     }
                 }
                 ConnectionClientside::Lan(connection) => {
-                    // check if we have any messages to process
                     let try_recv = connection.attempt_receive_fast_and_deserialise().await;
                     if let Some(message) = try_recv {
                         self.handle_message_fast(message.clone().packet.unwrap()).await;
@@ -861,13 +959,24 @@ impl WorldMachine {
                             movement_info = Some(movement_info_some);
                         }
                     }
-                    movement_updates.push(ClientUpdate::IMoved(position, Some(displacement_vector.0), rotation, head_rotation, movement_info));
+                    movement_updates.push(
+                        ClientUpdate::IMoved(
+                            position,
+                            Some(displacement_vector.0),
+                            rotation,
+                            head_rotation,
+                            movement_info
+                        )
+                    );
                 }
                 ClientUpdate::ILooked(look_quat) => {
                     let position = self.player.as_mut().unwrap().player.get_position();
                     let rotation = self.player.as_mut().unwrap().player.get_rotation();
                     let head_rotation = self.player.as_mut().unwrap().player.get_head_rotation();
-                    movement_updates.push(ClientUpdate::IMoved(position, None, rotation, head_rotation, movement_info));}
+                    movement_updates.push(
+                        ClientUpdate::IMoved(position, None, rotation, head_rotation, movement_info)
+                    );
+                }
                 ClientUpdate::IJumped => {
                     jumped_real = true;
                 }
@@ -876,7 +985,7 @@ impl WorldMachine {
                 }
             }
         }
-        // get the latest movement update and append it to the end of the updates
+
         let mut last_displacement_vector = None;
         if movement_updates.len() > 0 {
             for update in movement_updates.clone() {
@@ -885,24 +994,48 @@ impl WorldMachine {
                 }
             }
             let mut latest_movement_update = movement_updates.last().unwrap().clone();
-            // if we have a displacement vector, we need to add it to the last movement update
+
             if let Some(displacement_vector) = last_displacement_vector {
-                if let ClientUpdate::IMoved(position, _, rotation, head_rotation, jumped) = latest_movement_update {
-                    let new = ClientUpdate::IMoved(position, Some(displacement_vector), rotation, head_rotation, movement_info);
+                if
+                    let ClientUpdate::IMoved(position, _, rotation, head_rotation, jumped) =
+                        latest_movement_update
+                {
+                    let new = ClientUpdate::IMoved(
+                        position,
+                        Some(displacement_vector),
+                        rotation,
+                        head_rotation,
+                        movement_info
+                    );
                     latest_movement_update = new;
                 }
             }
             updates.push(latest_movement_update.clone());
         }
-        // send the updates to the server
+
         for update in updates {
             match update {
                 ClientUpdate::IDisplaced(_) => {}
                 ClientUpdate::ILooked(_) => {}
-                ClientUpdate::IMoved(position, displacement_vector, rotation, head_rotation, jumped) => {
+                ClientUpdate::IMoved(
+                    position,
+                    displacement_vector,
+                    rotation,
+                    head_rotation,
+                    jumped,
+                ) => {
                     let uuid = self.player.as_ref().unwrap().player.uuid.clone();
-                    let displacement_vector = displacement_vector.unwrap_or(Vec3::new(0.0, 0.0, 0.0));
-                    let packet = FastPacket::PlayerMove(uuid, position, displacement_vector, rotation, head_rotation, movement_info);
+                    let displacement_vector = displacement_vector.unwrap_or(
+                        Vec3::new(0.0, 0.0, 0.0)
+                    );
+                    let packet = FastPacket::PlayerMove(
+                        uuid,
+                        position,
+                        displacement_vector,
+                        rotation,
+                        head_rotation,
+                        movement_info
+                    );
                     self.send_fast_message(FastPacketData {
                         packet: Some(packet),
                     }).await;
@@ -914,8 +1047,8 @@ impl WorldMachine {
                         packet: Some(packet),
                     }).await;
                 }
-                ClientUpdate::IThrewSnowball => {
-                    self.throw_snowball().await;
+                ClientUpdate::IThrewtball => {
+                    self.throw_tball().await;
                 }
             }
         }
@@ -980,7 +1113,12 @@ impl WorldMachine {
         }
     }
 
-    pub async fn client_tick(&mut self, renderer: &mut ht_renderer, physics_engine: PhysicsSystem, delta_time: f32) -> Vec<ClientUpdate> {
+    pub async fn client_tick(
+        &mut self,
+        renderer: &mut MutRenderer,
+        physics_engine: PhysicsSystem,
+        delta_time: f32
+    ) -> Vec<ClientUpdate> {
         if self.is_server {
             warn!("client_tick: called on server");
             return vec![];
@@ -996,16 +1134,16 @@ impl WorldMachine {
             }
         }
 
-        let mut snowballs_to_remove = Vec::new();
-        for (i, snowball) in self.snowballs.iter_mut().enumerate() {
-            snowball.time_to_live -= delta_time;
-            if snowball.time_to_live <= 0.0 {
-                snowballs_to_remove.push(i);
+        let mut tballs_to_remove = Vec::new();
+        for (i, tball) in self.tballs.iter_mut().enumerate() {
+            tball.time_to_live -= delta_time;
+            if tball.time_to_live <= 0.0 {
+                tballs_to_remove.push(i);
             }
         }
 
-        for (i, snowball) in snowballs_to_remove.iter().enumerate() {
-            self.snowballs.remove(*snowball - i);
+        for (i, tball) in tballs_to_remove.iter().enumerate() {
+            self.tballs.remove(*tball - i);
         }
 
         if self.last_ping.elapsed().as_secs_f32() >= 10.0 {
@@ -1021,7 +1159,7 @@ impl WorldMachine {
         updates
     }
 
-    pub fn next_frame(&mut self, renderer: &mut ht_renderer) {
+    pub fn next_frame(&mut self, renderer: &mut MutRenderer) {
         for mesh in &mut renderer.meshes.values_mut() {
             mesh.updated_animations_this_frame = false;
             if let Some(shadow_mesh) = &mesh.shadow_mesh {
@@ -1030,8 +1168,7 @@ impl WorldMachine {
         }
     }
 
-    pub fn render(&mut self, renderer: &mut ht_renderer, shadow_pass: Option<(u8, usize)>) {
-        // todo! actual good player rendering
+    pub fn render(&mut self, renderer: &mut MutRenderer, shadow_pass: Option<(u8, usize)>) {
         if let Some(player) = &mut self.player {
             let position = player.player.get_position();
             let rotation = player.player.get_rotation();
@@ -1041,7 +1178,7 @@ impl WorldMachine {
                     shadow_mesh.lock().unwrap().updated_animations_this_frame = false;
                 }
                 let texture = renderer.textures.get("default").cloned().unwrap();
-                mesh.position = position + (rotation.forward() * -0.2) + Vec3::new(0.0, -0.1, 0.0);
+                mesh.position = position + rotation.forward() * -0.2 + Vec3::new(0.0, -0.1, 0.0);
                 mesh.rotation = rotation;
                 mesh.scale = Vec3::new(1.0, 1.0, 1.0);
 
@@ -1051,11 +1188,15 @@ impl WorldMachine {
             }
         }
 
-        for snowball in &mut self.snowballs {
-            let position = snowball.get_position();
+        for tball in &mut self.tballs {
+            let position = tball.get_position();
             if let Some(mut mesh) = renderer.meshes.get("snowball").cloned() {
                 renderer.meshes.get_mut("snowball").unwrap().updated_animations_this_frame = false;
-                if let Some(shadow_mesh) = &renderer.meshes.get_mut("snowball").unwrap().shadow_mesh {
+                if
+                    let Some(shadow_mesh) = &renderer.meshes
+                        .get_mut("snowball")
+                        .unwrap().shadow_mesh
+                {
                     shadow_mesh.lock().unwrap().updated_animations_this_frame = false;
                 }
                 let texture = renderer.textures.get("snowball").cloned().unwrap();
@@ -1121,11 +1262,7 @@ impl WorldMachine {
                             }
                         };
                         let name = name.unwrap();
-                        /*let res = renderer.load_terrain_if_not_already_loaded(name);
-                        if res.is_err() {
-                            warn!("render: failed to load terrain: {:?}", res);
-                        }
-                         */
+
                         let terrain_loaded = true;
                         if terrain_loaded {
                             finished_loading -= 1;
@@ -1150,7 +1287,6 @@ impl WorldMachine {
                 continue;
             }
             if let Some(mesh_renderer) = entity.get_component(COMPONENT_TYPE_MESH_RENDERER.clone()) {
-                    // get the string value of the mesh
                 let mesh_name = match mesh_renderer.get_parameter("mesh").value {
                     ParameterValue::String(ref s) => s.clone(),
                     _ => {
@@ -1159,7 +1295,6 @@ impl WorldMachine {
                     }
                 };
 
-                // todo: add "shadow casting" parameter to mesh renderer and stop hardcoding this
                 if mesh_name == "Plane" {
                     if let Some((pass, _)) = shadow_pass {
                         if pass == 1 {
@@ -1168,7 +1303,6 @@ impl WorldMachine {
                     }
                 }
 
-                // if so, render it
                 let mesh = renderer.meshes.get(&*mesh_name).cloned();
                 if let Some(mut mesh) = mesh {
                     let casts_shadow = mesh_renderer.get_parameter("casts_shadow");
@@ -1206,7 +1340,6 @@ impl WorldMachine {
                     let old_rotation = mesh.rotation;
                     let old_scale = mesh.scale;
 
-                    // if this entity has a transform, apply it
                     if let Some(transform) = entity.get_component(COMPONENT_TYPE_TRANSFORM.clone()) {
                         let position = match transform.get_parameter("position").value {
                             ParameterValue::Vec3(v) => v,
@@ -1223,7 +1356,7 @@ impl WorldMachine {
                                 continue;
                             }
                         };
-                        // add a bit of rotation to the transform to make things more interesting
+
                         mesh.rotation = rotation;
                         let scale = match transform.get_parameter("scale").value {
                             ParameterValue::Vec3(v) => v,
@@ -1234,9 +1367,6 @@ impl WorldMachine {
                         };
                         mesh.scale *= scale;
                     }
-
-                    // add a bit of rotation to the transform to make things more interesting
-                    //entity.set_component_parameter(COMPONENT_TYPE_TRANSFORM.clone(), "rotation", Box::new(Quaternion::from_euler_angles_zyx(&Vec3::new(0.0, self.counter, 0.0))));
 
                     let mut anim_weights = None;
                     if mesh_name == "player" {
@@ -1250,66 +1380,17 @@ impl WorldMachine {
                     mesh.scale = old_scale;
                     *renderer.meshes.get_mut(&*mesh_name).unwrap() = mesh;
                 } else {
-                    // if not, add it to the list of things to load
                     self.entities_wanting_to_load_things.push(i);
                 }
             }
-            /*if let Some(terrain) = entity.get_component(COMPONENT_TYPE_TERRAIN.clone()) {
-                if let Some(name) = terrain.get_parameter("name") {
-                    // get the string value of the mesh
-                    let name = match name.value {
-                        ParameterValue::String(ref s) => s.clone(),
-                        _ => {
-                            error!("render: terrain name is not a string");
-                            continue;
-                        }
-                    };
-                    // if so, render it
-                    let terrains = renderer.terrains.clone().unwrap();
-                    let terrain = terrains.get(&*name);
-                    if let Some(terrain) = terrain {
-                        let mut terrain = terrain.clone();
-                        if let Some(transform) = entity.get_component(COMPONENT_TYPE_TRANSFORM.clone()) {
-                            let position = transform.get_parameter("position").unwrap();
-                            let position = match position.value {
-                                ParameterValue::Vec3(v) => v,
-                                _ => {
-                                    error!("render: transform position is not a vec3");
-                                    continue;
-                                }
-                            };
-                            let rotation = transform.get_parameter("rotation").unwrap();
-                            let rotation = match rotation.value {
-                                ParameterValue::Quaternion(v) => v,
-                                _ => {
-                                    error!("render: transform rotation is not a quaternion");
-                                    continue;
-                                }
-                            };
-                            let scale = transform.get_parameter("scale").unwrap();
-                            let scale = match scale.value {
-                                ParameterValue::Vec3(v) => v,
-                                _ => {
-                                    error!("render: transform scale is not a vec3");
-                                    continue;
-                                }
-                            };
-                            terrain.mesh.position += position;
-                            terrain.mesh.rotation = rotation;
-                            terrain.mesh.scale += scale;
-                        }
-                        terrain.render(renderer);
-                    }
-                }
-            }
-             */
+
             if let Some(player_component) = entity.get_component(COMPONENT_TYPE_PLAYER.clone()) {
                 if let Some(ignore) = self.ignore_this_entity {
                     if ignore == entity.uid {
                         continue;
                     }
                 }
-                let position = player_component.get_parameter("position"); // todo: change to foot position
+                let position = player_component.get_parameter("position");
                 let position = match position.value {
                     ParameterValue::Vec3(v) => v,
                     _ => {
@@ -1342,8 +1423,14 @@ impl WorldMachine {
                     }
                 };
                 if let Some(mesh) = renderer.meshes.get("player").cloned() {
-                    renderer.meshes.get_mut("player").unwrap().updated_animations_this_frame = false;
-                    if let Some(shadow_mesh) = &renderer.meshes.get_mut("player").unwrap().shadow_mesh {
+                    renderer.meshes
+                        .get_mut("player")
+                        .unwrap().updated_animations_this_frame = false;
+                    if
+                        let Some(shadow_mesh) = &renderer.meshes
+                            .get_mut("player")
+                            .unwrap().shadow_mesh
+                    {
                         shadow_mesh.lock().unwrap().updated_animations_this_frame = false;
                     }
                     let texture = renderer.textures.get("default").cloned().unwrap();
@@ -1366,8 +1453,18 @@ impl WorldMachine {
         }
     }
 
-    pub fn handle_audio(&mut self, renderer: &ht_renderer, audio: &AudioBackend, scontext: &SoundContext) {
-        audio.update(renderer.camera.get_position(), -renderer.camera.get_front(), renderer.camera.get_up(), scontext);
+    pub fn handle_audio(
+        &mut self,
+        renderer: &MutRenderer,
+        audio: &AudioBackend,
+        scontext: &SoundContext
+    ) {
+        audio.update(
+            renderer.camera.get_position(),
+            -renderer.camera.get_front(),
+            renderer.camera.get_up(),
+            scontext
+        );
 
         for index in self.entities_wanting_to_load_things.clone() {
             let entity = &self.world.entities[index];
@@ -1383,7 +1480,7 @@ impl WorldMachine {
                                 continue;
                             }
                         };
-                        // check if the track is already loaded
+
                         if !audio.is_sound_loaded(&track) {
                             audio.load_sound(&track);
                         }
@@ -1392,8 +1489,6 @@ impl WorldMachine {
                 }
             }
         }
-        // don't clear here because that's done later in rendering
-
 
         for (i, entity) in self.world.entities.iter_mut().enumerate() {
             if let Some(jukebox) = entity.get_component(COMPONENT_TYPE_JUKEBOX.clone()) {
@@ -1430,7 +1525,9 @@ impl WorldMachine {
                     }
                 };
 
-                let position = if let Some(transform) = entity.get_component(COMPONENT_TYPE_TRANSFORM.clone()) {
+                let position = if
+                    let Some(transform) = entity.get_component(COMPONENT_TYPE_TRANSFORM.clone())
+                {
                     let position = transform.get_parameter("position");
                     let position = match position.value {
                         ParameterValue::Vec3(v) => v,
@@ -1454,7 +1551,6 @@ impl WorldMachine {
                         audio.set_sound_position(&uuid, position, scontext);
                     }
                 } else {
-                    // if not, add it to the list of things to load
                     self.entities_wanting_to_load_things.push(i);
                 }
             }

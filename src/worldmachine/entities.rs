@@ -13,9 +13,8 @@ impl Entity {
         }
     }
 
-    // SHOULD ONLY BE USED IF YOU ARE __SURE__ THAT THIS ENTITY DOESN'T ALREADY EXIST
     pub unsafe fn new_with_id(name: &str, uid: EntityId) -> Entity {
-        warn!("Creating entity with id: {}", uid);
+        warn!("Creating an entity and assigning it with id: {}", uid);
         Self {
             name: name.to_string(),
             uid,
@@ -32,7 +31,6 @@ impl Entity {
     }
 
     pub fn add_component(&mut self, component: Component) {
-        // check if we already have a component of this type
         for existing_component in &self.components {
             if existing_component.component_type == component.component_type {
                 return;
@@ -72,8 +70,8 @@ impl Entity {
     }
 }
 
-pub fn new_me19_entity() -> Entity {
-    let mut entity = Entity::new("me19");
+pub fn new_engine_entity() -> Entity {
+    let mut entity = Entity::new("mutEngine19");
     entity.add_component(Transform::default());
     entity.add_component(MeshRenderer::default());
     entity

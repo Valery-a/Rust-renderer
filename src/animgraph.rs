@@ -33,9 +33,6 @@ impl AnimGraph {
     pub fn weights(&self) -> Vec<(String, f64)> {
         let mut weights = Vec::new();
         let position = self.position;
-        // weights are 0 if no influence, 1 if full influence
-        // nodes further than or equal to 2.0 away have no influence
-        // if we are directly on a node, we get 1.0 weight and no other nodes
         let mut max_weight = 0.0;
         for node in &self.nodes {
             let distance = distance2d(position, node.position) as f64;
@@ -47,7 +44,6 @@ impl AnimGraph {
                 max_weight = weight;
             }
             if weight == 1.0 {
-                // only one node can have full influence
                 weights.retain(|(_, w)| *w == max_weight);
                 break;
             }

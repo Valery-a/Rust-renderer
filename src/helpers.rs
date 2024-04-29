@@ -1,12 +1,10 @@
-use std::io::Read;
-use std::os::raw::c_int;
-use std::ptr::null_mut;
+use crate::renderer::RGBA;
+use crate::MutRenderer;
 use gfx_maths::{Mat4, Quaternion, Vec2, Vec3};
 use glad_gl::gl::*;
-use crate::renderer::RGBA;
-use crate::ht_renderer;
+use std::io::Read;
 
-pub fn set_shader_if_not_already(renderer: &mut ht_renderer, shader_index: usize) {
+pub fn set_shader_if_not_already(renderer: &mut MutRenderer, shader_index: usize) {
     if renderer.backend.current_shader != Some(shader_index) {
         unsafe {
             UseProgram(renderer.backend.shaders.as_mut().unwrap()[shader_index].program);
@@ -17,16 +15,22 @@ pub fn set_shader_if_not_already(renderer: &mut ht_renderer, shader_index: usize
 
 pub fn gen_rainbow(time: f64) -> RGBA {
     let frequency = 0.05;
-    let r = ((frequency * (time as f64) + 0.0).sin() * 127.0f64 + 128.0f64);
-    let g = ((frequency * (time as f64) + 2.0).sin() * 127.0f64 + 128.0f64);
-    let b = ((frequency * (time as f64) + 4.0).sin() * 127.0f64 + 128.0f64);
-    RGBA { r: (r) as u8, g: (g) as u8, b: (b) as u8, a: 255 }
+    let r = (frequency * (time as f64) + 0.0).sin() * 127.0f64 + 128.0f64;
+    let g = (frequency * (time as f64) + 2.0).sin() * 127.0f64 + 128.0f64;
+    let b = (frequency * (time as f64) + 4.0).sin() * 127.0f64 + 128.0f64;
+    RGBA {
+        r: r as u8,
+        g: g as u8,
+        b: b as u8,
+        a: 255,
+    }
 }
 
 pub fn load_string_from_file(path: String) -> Result<String, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut contents = String::new();
-    file.read_to_string(&mut contents).map_err(|e| e.to_string())?;
+    file.read_to_string(&mut contents)
+        .map_err(|e| e.to_string())?;
     Ok(contents)
 }
 
@@ -78,11 +82,10 @@ pub fn distance2d(a: Vec2, b: Vec2) -> f32 {
     (x * x + y * y).abs().sqrt()
 }
 
-// make sure to preserve negative vectors
 pub fn clamp_magnitude(vector: Vec3, max_magnitude: f32) -> Vec3 {
     let magnitude = vector.magnitude();
     if magnitude > max_magnitude {
-        vector / magnitude * max_magnitude
+        (vector / magnitude) * max_magnitude
     } else {
         vector
     }
@@ -160,8 +163,8 @@ pub fn gltf_matrix_to_gfx_maths_mat4(a: [[f32; 4]; 4]) -> gfx_maths::Mat4 {
 }
 
 pub fn interpolate_mats(a: Mat4, b: Mat4, t: f64) -> Mat4 {
-    let mut a = a;
-    let mut b = b;
+    let a = a;
+    let b = b;
     let mut t = t;
     if t < 0.0 {
         t = 0.0;
@@ -172,7 +175,8 @@ pub fn interpolate_mats(a: Mat4, b: Mat4, t: f64) -> Mat4 {
     let mut result = Mat4::identity();
     for i in 0..4 {
         for j in 0..4 {
-            result.values[i * 4 + j] = a.values[i * 4 + j] + (b.values[i * 4 + j] - a.values[i * 4 + j]) * t as f32;
+            result.values[i * 4 + j] =
+                a.values[i * 4 + j] + (b.values[i * 4 + j] - a.values[i * 4 + j]) * (t as f32);
         }
     }
     result
@@ -187,11 +191,14 @@ pub fn row_mat_to_vec(mat: Mat4, row: usize) -> Vec3 {
 }
 
 pub fn multiply_vec3_by_f64(vec: Vec3, f: f64) -> Vec3 {
-    Vec3::new(vec.x * f as f32, vec.y * f as f32, vec.z * f as f32)
+    Vec3::new(vec.x * (f as f32), vec.y * (f as f32), vec.z * (f as f32))
 }
 
-// 0 = x, 1 = y, 2 = z, 3 = w
-pub fn interpolate_quaternion(a: (f64,f64,f64,f64), b: (f64,f64,f64,f64), t: f64) -> (f64,f64,f64,f64) {
+pub fn interpolate_quaternion(
+    a: (f64, f64, f64, f64),
+    b: (f64, f64, f64, f64),
+    t: f64,
+) -> (f64, f64, f64, f64) {
     let mut dot = a.0 * b.0 + a.1 * b.1 + a.2 * b.2 + a.3 * b.3;
     let mut b = b;
     if dot < 0.0 {
@@ -213,22 +220,25 @@ pub fn interpolate_quaternion(a: (f64,f64,f64,f64), b: (f64,f64,f64,f64), t: f64
     return add_quaternion(multiply_quaternion(a, s0), multiply_quaternion(b, s1));
 }
 
-pub fn multiply_quaternion(a: (f64,f64,f64,f64), b: f64) -> (f64,f64,f64,f64) {
+pub fn multiply_quaternion(a: (f64, f64, f64, f64), b: f64) -> (f64, f64, f64, f64) {
     (a.0 * b, a.1 * b, a.2 * b, a.3 * b)
 }
 
-pub fn subtract_quaternion(a: (f64,f64,f64,f64), b: (f64,f64,f64,f64)) -> (f64,f64,f64,f64) {
+pub fn subtract_quaternion(
+    a: (f64, f64, f64, f64),
+    b: (f64, f64, f64, f64),
+) -> (f64, f64, f64, f64) {
     (a.0 - b.0, a.1 - b.1, a.2 - b.2, a.3 - b.3)
 }
 
-pub fn add_quaternion(a: (f64,f64,f64,f64), b: (f64,f64,f64,f64)) -> (f64,f64,f64,f64) {
+pub fn add_quaternion(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
     (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3)
 }
 
-pub fn to_q64(quat: Quaternion) -> (f64,f64,f64,f64) {
+pub fn to_q64(quat: Quaternion) -> (f64, f64, f64, f64) {
     (quat.x as f64, quat.y as f64, quat.z as f64, quat.w as f64)
 }
 
-pub fn from_q64(quat: (f64,f64,f64,f64)) -> Quaternion {
+pub fn from_q64(quat: (f64, f64, f64, f64)) -> Quaternion {
     Quaternion::new(quat.0 as f32, quat.1 as f32, quat.2 as f32, quat.3 as f32)
 }

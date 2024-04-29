@@ -19,17 +19,16 @@ use glad_gl::gl::*;
 use crate::animation::Animation;
 use crate::helpers::{gen_rainbow, set_shader_if_not_already};
 use crate::light::Light;
-use crate::renderer::{RGBA, ht_renderer};
+use crate::renderer::{RGBA, MutRenderer};
 use crate::textures::Texture;
 
-pub fn animate(renderer: &mut ht_renderer, sss: &SoundContext) {
+pub fn animate(renderer: &mut MutRenderer, sss: &SoundContext) {
     renderer.backend.clear_colour.store(RGBA { r: 0, g: 0, b: 0, a: 255 }, Ordering::SeqCst);
-    // load me19-mesh logo model
-    renderer.load_texture_if_not_already_loaded_synch("ht2").expect("failed to load me19-mesh texture");
-    renderer.load_mesh_if_not_already_loaded_synch("ht2").expect("failed to load me19 mesh");
+    renderer.load_texture_if_not_already_loaded_synch("mut19").expect("failed to load me19-mesh texture");
+    renderer.load_mesh_if_not_already_loaded_synch("mut19").expect("failed to load me19 mesh");
 
-    let mut mesh = renderer.meshes.get("ht2").expect("failed to get me19 mesh").clone();
-    let mut texture = renderer.textures.get("ht2").expect("failed to get me19-mesh texture").clone();
+    let mut mesh = renderer.meshes.get("mut19").expect("failed to get me19 mesh").clone();
+    let mut texture = renderer.textures.get("mut19").expect("failed to get me19-mesh texture").clone();
     let rainbow_shader = renderer.shaders.get("rainbow").unwrap().clone();
 
     unsafe {
@@ -198,8 +197,8 @@ pub fn animate(renderer: &mut ht_renderer, sss: &SoundContext) {
         if opacity_timer < opacity_delay {
             opacity_timer += current_time.duration_since(last_time).expect("failed to get time since last frame").as_millis() as f32;
         } else if
-        crate::ui::introsnd_INFO.lock().unwrap().powered_by_opacity < 1.0 {
-            crate::ui::introsnd_INFO.lock().unwrap().powered_by_opacity += current_time.duration_since(last_time).unwrap().as_secs_f32() / 10.0;
+        crate::ui::INTROSND_INFO.lock().unwrap().powered_by_opacity < 1.0 {
+            crate::ui::INTROSND_INFO.lock().unwrap().powered_by_opacity += current_time.duration_since(last_time).unwrap().as_secs_f32() / 10.0;
         }
 
         // increase light intensity
@@ -256,7 +255,7 @@ pub fn animate(renderer: &mut ht_renderer, sss: &SoundContext) {
             Viewport(0, 0, renderer.render_size.x as i32, renderer.render_size.y as i32);
         }
 
-        crate::ui::introsnd_INFO.lock().unwrap().show_copyright = true;
+        //crate::ui::INTROSND_INFO.lock().unwrap().show_copyright = true;
         // swap buffers
         renderer.introsnd_swap_buffers();
 

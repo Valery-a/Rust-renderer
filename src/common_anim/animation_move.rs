@@ -1,5 +1,5 @@
 use gfx_maths::Vec2;
-use crate::animgraph::{AnimGraph, AnimGraphNode};
+use crate::animgraph::{ AnimGraph, AnimGraphNode };
 
 #[derive(Clone, Debug)]
 pub struct Features {
@@ -83,10 +83,10 @@ impl MoveAnim {
                         name: "strafe_right".to_string(),
                         position: Vec2::new(1.0, 0.0),
                         animation: "strafe".to_string(),
-                    },
+                    }
                 ],
                 position: Vec2::new(strafe as f32, speed as f32),
-            }
+            },
         };
         animation_move
     }
@@ -116,7 +116,6 @@ impl MoveAnim {
 
     pub fn weights(&self) -> Vec<(String, f64)> {
         let weights = self.inner.weights();
-        //debug!("weights: {:?}", weights);
         weights
     }
 }

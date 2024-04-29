@@ -1,18 +1,23 @@
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::BTreeMap;
 use gfx_maths::*;
-use serde::{Deserialize, Serialize};
-use crate::{helpers, ht_renderer, keyboard, mouse};
+use serde::{ Deserialize, Serialize };
+use crate::{ helpers, MutRenderer, keyboard, mouse };
 use crate::camera::EYE_HEIGHT;
 use crate::helpers::lerp;
 use crate::keyboard::HTKey;
 use crate::mouse::MouseButtonState;
-use crate::physics::{ClimbingMode, Materials, PhysicsCharacterController, PhysicsSystem};
+use crate::physics::{ Materials, PhysicsCharacterController, PhysicsSystem };
 use crate::server::ConnectionUUID;
-use crate::server::server_player::{DEFAULT_HEIGHT, DEFAULT_MOVESPEED, DEFAULT_RADIUS, DEFAULT_SPRINTSPEED, DEFAULT_STEPHEIGHT};
+use crate::server::server_player::{
+    DEFAULT_HEIGHT,
+    DEFAULT_MOVESPEED,
+    DEFAULT_RADIUS,
+    DEFAULT_SPRINTSPEED,
+    DEFAULT_STEPHEIGHT,
+};
 use crate::worldmachine::components::COMPONENT_TYPE_PLAYER;
 use crate::worldmachine::ecs::*;
-use crate::worldmachine::{ClientUpdate, EntityId, WorldMachine};
+use crate::worldmachine::{ ClientUpdate, EntityId };
 
 pub const DEFAULT_FOV: f32 = 120.0;
 pub const SPRINT_FOV: f32 = 140.0;
@@ -21,17 +26,44 @@ pub struct PlayerComponent {}
 
 #[allow(clippy::new_ret_no_self)]
 impl PlayerComponent {
-    pub fn new(name: &str, uuid: ConnectionUUID, position: Vec3, rotation: Quaternion, scale: Vec3) -> Component {
+    pub fn new(
+        name: &str,
+        uuid: ConnectionUUID,
+        position: Vec3,
+        rotation: Quaternion,
+        scale: Vec3
+    ) -> Component {
         let mut parameters = BTreeMap::new();
         parameters.insert("uuid".to_string(), Parameter::new("uuid", ParameterValue::String(uuid)));
-        parameters.insert("name".to_string(), Parameter::new("name", ParameterValue::String(name.to_string())));
-        parameters.insert("position".to_string(), Parameter::new("position", ParameterValue::Vec3(position)));
-        parameters.insert("head_rotation".to_string(), Parameter::new("head_rotation", ParameterValue::Quaternion(rotation)));
-        parameters.insert("rotation".to_string(), Parameter::new("rotation", ParameterValue::Quaternion(rotation)));
-        parameters.insert("scale".to_string(), Parameter::new("scale", ParameterValue::Vec3(scale)));
-        parameters.insert("sprinting".to_string(), Parameter::new("sprinting", ParameterValue::Bool(false)));
+        parameters.insert(
+            "name".to_string(),
+            Parameter::new("name", ParameterValue::String(name.to_string()))
+        );
+        parameters.insert(
+            "position".to_string(),
+            Parameter::new("position", ParameterValue::Vec3(position))
+        );
+        parameters.insert(
+            "head_rotation".to_string(),
+            Parameter::new("head_rotation", ParameterValue::Quaternion(rotation))
+        );
+        parameters.insert(
+            "rotation".to_string(),
+            Parameter::new("rotation", ParameterValue::Quaternion(rotation))
+        );
+        parameters.insert(
+            "scale".to_string(),
+            Parameter::new("scale", ParameterValue::Vec3(scale))
+        );
+        parameters.insert(
+            "sprinting".to_string(),
+            Parameter::new("sprinting", ParameterValue::Bool(false))
+        );
         parameters.insert("speed".to_string(), Parameter::new("speed", ParameterValue::Float(0.0)));
-        parameters.insert("strafe".to_string(), Parameter::new("strafe", ParameterValue::Float(0.0)));
+        parameters.insert(
+            "strafe".to_string(),
+            Parameter::new("strafe", ParameterValue::Float(0.0))
+        );
 
         Component {
             name: "Player".to_string(),
@@ -40,7 +72,13 @@ impl PlayerComponent {
         }
     }
     pub fn default() -> Component {
-        Self::new("player", "".to_string(), Vec3::new(0.0, 0.0, 0.0), Quaternion::new(0.0, 0.0, 0.0, 1.0), Vec3::new(1.0, 1.0, 1.0))
+        Self::new(
+            "player",
+            "".to_string(),
+            Vec3::new(0.0, 0.0, 0.0),
+            Quaternion::new(0.0, 0.0, 0.0, 1.0),
+            Vec3::new(1.0, 1.0, 1.0)
+        )
     }
 }
 
@@ -118,8 +156,21 @@ pub struct MovementInfo {
 }
 
 impl Player {
-    pub fn init(&mut self, physics_system: PhysicsSystem, uuid: String, name: String, position: Vec3, rotation: Quaternion, scale: Vec3) {
-        self.physics_controller = physics_system.create_character_controller(DEFAULT_RADIUS, DEFAULT_HEIGHT, DEFAULT_STEPHEIGHT, Materials::Player);
+    pub fn init(
+        &mut self,
+        physics_system: PhysicsSystem,
+        uuid: String,
+        name: String,
+        position: Vec3,
+        rotation: Quaternion,
+        scale: Vec3
+    ) {
+        self.physics_controller = physics_system.create_character_controller(
+            DEFAULT_RADIUS,
+            DEFAULT_HEIGHT,
+            DEFAULT_STEPHEIGHT,
+            Materials::Player
+        );
         self.calculate_pitch_and_yaw_from_rotation(rotation);
         if self.physics_controller.is_none() {
             warn!("error while creating the physics");
@@ -132,7 +183,11 @@ impl Player {
         self.scale = scale;
     }
 
-    fn handle_mouse_movement(&mut self, renderer: &mut ht_renderer, delta_time: f32) -> Option<Quaternion> {
+    fn handle_mouse_movement(
+        &mut self,
+        renderer: &mut MutRenderer,
+        delta_time: f32
+    ) -> Option<Quaternion> {
         if !self.locked_mouse {
             return None;
         }
@@ -144,8 +199,8 @@ impl Player {
         }
         let last_mouse_pos = self.last_mouse_pos.unwrap();
 
-        let ang_x = -(mouse_pos.x as f64 - last_mouse_pos.x as f64);
-        let ang_y = -(mouse_pos.y as f64 - last_mouse_pos.y as f64);
+        let ang_x = -((mouse_pos.x as f64) - (last_mouse_pos.x as f64));
+        let ang_y = -((mouse_pos.y as f64) - (last_mouse_pos.y as f64));
         self.last_mouse_pos = Some(mouse_pos);
 
         let camera = &mut renderer.camera;
@@ -180,7 +235,6 @@ impl Player {
         yaw -= original_yaw;
         pitch -= original_pitch;
 
-
         let horiz = Quaternion::from_euler_angles_zyx(&Vec3::new(0.0, yaw as f32, 0.0));
         let vert = Quaternion::from_euler_angles_zyx(&Vec3::new(pitch as f32, 0.0, 0.0));
 
@@ -200,7 +254,12 @@ impl Player {
         }
     }
 
-    fn handle_keyboard_movement(&mut self, renderer: &mut ht_renderer, jump: bool, frame_delta: f32) -> Option<(Vec3, MovementInfo)> {
+    fn handle_keyboard_movement(
+        &mut self,
+        renderer: &mut MutRenderer,
+        jump: bool,
+        frame_delta: f32
+    ) -> Option<(Vec3, MovementInfo)> {
         let mut movement = Vec3::new(0.0, 0.0, 0.0);
         let camera = &mut renderer.camera;
         let camera_rotation = camera.get_rotation();
@@ -284,14 +343,15 @@ impl Player {
         let delta_time = now.duration_since(self.last_move_call).as_secs_f32();
         self.last_move_call = now;
         let dt_movement = movement * frame_delta;
-        let final_movement = self.physics_controller.as_mut().unwrap().move_by(dt_movement, jump, None, false, delta_time, frame_delta);
-        
-        // FLIGHT
-        // let mut position = self.physics_controller.as_ref().unwrap().get_position();
-        // position.y += 5.0;
-        // self.physics_controller.as_mut().unwrap().set_position(position);
+        let final_movement = self.physics_controller
+            .as_mut()
+            .unwrap()
+            .move_by(dt_movement, jump, None, false, delta_time, frame_delta);
 
-        *crate::ui::DEBUG_LOCATION.lock().unwrap() = self.physics_controller.as_ref().unwrap().get_position();
+        *crate::ui::DEBUG_LOCATION.lock().unwrap() = self.physics_controller
+            .as_ref()
+            .unwrap()
+            .get_position();
 
         if final_movement != Vec3::new(0.0, 0.0, 0.0) {
             self.was_moving = true;
@@ -304,14 +364,18 @@ impl Player {
         }
     }
 
-    fn handle_jump(&mut self, renderer: &mut ht_renderer, delta_time: f32) -> bool {
+    fn handle_jump(&mut self, renderer: &mut MutRenderer, delta_time: f32) -> bool {
         if keyboard::check_key_down(HTKey::Space) {
             return true;
         }
         false
     }
-    
-    pub fn handle_input(&mut self, renderer: &mut ht_renderer, delta_time: f32) -> Option<Vec<ClientUpdate>> {
+
+    pub fn handle_input(
+        &mut self,
+        renderer: &mut MutRenderer,
+        delta_time: f32
+    ) -> Option<Vec<ClientUpdate>> {
         if self.first_run {
             self.first_run = false;
             self.locked_mouse = true;
@@ -327,7 +391,7 @@ impl Player {
             renderer.lock_mouse(true);
             self.locked_mouse = true;
         }
-        
+
         let jump = self.handle_jump(renderer, delta_time);
         let look = self.handle_mouse_movement(renderer, delta_time);
         let movement = self.handle_keyboard_movement(renderer, jump, delta_time);
@@ -339,7 +403,7 @@ impl Player {
                 if let Some(movement) = movement {
                     let mut new_movement = movement.1;
                     new_movement.jumped = true;
-                    updates.push(ClientUpdate::IDisplaced((movement.0, Some(new_movement)))); // using displaced as the returned value is a displacement vector for the physics engine
+                    updates.push(ClientUpdate::IDisplaced((movement.0, Some(new_movement))));
                 } else {
                     updates.push(ClientUpdate::IDisplaced((Vec3::zero(), None)));
                 }
@@ -349,7 +413,7 @@ impl Player {
             }
 
             if mouse::get_mouse_button_state(0) == MouseButtonState::Pressed {
-                updates.push(ClientUpdate::IThrewSnowball);
+                updates.push(ClientUpdate::IThrewtball);
             }
         }
 
@@ -358,7 +422,7 @@ impl Player {
         if let Some(movement) = movement {
             let mut new_movement = movement.1;
             new_movement.jumped = jump;
-            updates.push(ClientUpdate::IDisplaced((movement.0, Some(movement.1)))); // using displaced as the returned value is a displacement vector for the physics engine
+            updates.push(ClientUpdate::IDisplaced((movement.0, Some(movement.1))));
             let mut movement = movement.0;
             movement.y = 0.0;
             bob_mag = movement.magnitude() * 0.1;
@@ -372,7 +436,9 @@ impl Player {
 
         if self.bob_on {
             let initial_head = self.get_position() + Vec3::new(0.0, EYE_HEIGHT, 0.0);
-            let bob = if bob_mag != 0.0 { initial_head + Vec3::new(0.0, 0.1 * ((self.bob_t  * 12.0).sin() * bob_mag), 0.0) } else if delta_time > 0.0 {
+            let bob = if bob_mag != 0.0 {
+                initial_head + Vec3::new(0.0, 0.1 * ((self.bob_t * 12.0).sin() * bob_mag), 0.0)
+            } else if delta_time > 0.0 {
                 self.bob_t = 0.0;
                 initial_head
             } else {
@@ -402,7 +468,7 @@ impl Player {
     pub fn get_rotation(&mut self) -> Quaternion {
         self.rotation
     }
-    //doesn't do anything at this moment ):
+
     fn calculate_pitch_and_yaw_from_rotation(&mut self, rotation: Quaternion) {
         let rotation = rotation.to_euler_angles_zyx();
     }

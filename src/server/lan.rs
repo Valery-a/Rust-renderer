@@ -1,24 +1,32 @@
-use std::cell::UnsafeCell;
+use crate::server::connections::SteadyMessageQueue;
+use crate::server::{
+    generate_uuid,
+    ConnectionUUID,
+    FastPacket,
+    FastPacketData,
+    PacketUUID,
+    SteadyPacket,
+    SteadyPacketData,
+};
+use bytes::{ Bytes, BytesMut };
+use fyrox_sound::futures::{ SinkExt, TryStreamExt };
 use halfbrown::HashMap;
-use std::collections::{VecDeque};
-use std::fmt::format;
-use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpSocket, TcpStream, UdpSocket};
-use tokio::sync::{mpsc};
 use mutex_timeouts::tokio::MutexWithTimeoutAuto as Mutex;
-use serde::{Serialize, Deserialize};
-use std::net::{SocketAddr};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use serde::{ Deserialize, Serialize };
+use std::cell::UnsafeCell;
+use std::collections::VecDeque;
+use std::fmt::format;
+use std::net::SocketAddr;
+use std::sync::atomic::{ AtomicBool, AtomicU64, Ordering };
+use std::sync::Arc;
 use std::time::Duration;
-use bytes::{Bytes, BytesMut};
-use fyrox_sound::futures::{SinkExt, TryStreamExt};
+use tokio::io::{ AsyncReadExt, AsyncWriteExt };
+use tokio::net::{ TcpListener, TcpSocket, TcpStream, UdpSocket };
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::Instant;
 use tokio_stream::StreamExt;
-use tokio_util::codec::{BytesCodec, Decoder, Encoder, Framed, LengthDelimitedCodec};
-use crate::server::{ConnectionUUID, FastPacket, FastPacketData, generate_uuid, PacketUUID, SteadyPacket, SteadyPacketData};
-use crate::server::connections::SteadyMessageQueue;
+use tokio_util::codec::{ BytesCodec, Decoder, Encoder, Framed, LengthDelimitedCodec };
 
 pub const FAST_QUEUE_LIMIT: usize = 4;
 pub const FAKE_LAG: bool = false;
@@ -118,12 +126,12 @@ pub enum FastPacketPotentials {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConnectionHandshakePacket {
     JoinRequest,
-    // sent from client to server
+
     PleaseConnectUDPNow(ConnectionUUID),
-    // sent from server to client
+
     IconnectedUDP(ConnectionUUID),
-    // sent from client to server (over udp)
-    YoureReady(ConnectionUUID), // sent from server to client (over udp)
+
+    YoureReady(ConnectionUUID),
 }
 
 #[derive(Clone)]
@@ -180,8 +188,9 @@ impl LanListener {
         let mut steady_update = steady_update;
         let mut reader = Framed::new(steady_update, LengthDelimitedCodec::new());
 
-        // check for first handshake packet
-        let buffer = StreamExt::next(&mut reader).await.expect("failed to read result from server").expect("error reading result from server");
+        let buffer = StreamExt::next(&mut reader).await
+            .expect("failed to read result from server")
+            .expect("error reading result from server");
         let mut deserialiser = rmp_serde::Deserializer::new(buffer.as_ref());
         let handshake_packet = ConnectionHandshakePacket::deserialize(&mut deserialiser);
         if let Err(_) = handshake_packet {
@@ -205,7 +214,6 @@ impl LanListener {
 
             let mut peer_addr = None;
 
-            // wait for udp connection
             let starting_time = Instant::now();
             const TIMEOUT_SECS: u64 = 20;
             const RETRY_SECS: u64 = 5;
@@ -213,7 +221,10 @@ impl LanListener {
                 let packet = self.check_for_fast_update(&uuid_real).await;
                 if let Some(packet) = packet {
                     debug!("got a packet, checking if it's the right one");
-                    if let FastPacketPotentials::ConnectionHandshake(handshake_packet) = packet.data {
+                    if
+                        let FastPacketPotentials::ConnectionHandshake(handshake_packet) =
+                            packet.data
+                    {
                         if let ConnectionHandshakePacket::IconnectedUDP(uuid) = handshake_packet {
                             if uuid == uuid_real {
                                 peer_addr = packet.socket_addr;
@@ -223,7 +234,6 @@ impl LanListener {
                     }
                 }
 
-                // every RETRY_SECS seconds, resend the packet
                 if starting_time.elapsed().as_secs() % RETRY_SECS == 0 {
                     let mut serialiser = rmp_serde::Serializer::new(Vec::new());
                     let packet = ConnectionHandshakePacket::PleaseConnectUDPNow(uuid_real.clone());
@@ -252,7 +262,6 @@ impl LanListener {
             }
             let peer_addr = peer_addr.unwrap();
 
-            // send the ready packet
             let mut serialiser = rmp_serde::Serializer::new(Vec::new());
             let packet = ConnectionHandshakePacket::YoureReady(uuid_real.clone());
             packet.serialize(&mut serialiser).unwrap();
@@ -266,21 +275,17 @@ impl LanListener {
 
             debug!("sent fourth handshake packet");
 
-            // return the connection
-            //return Some(LanConnection {
-            //    steady_update: Arc::new(Mutex::new(steady_update)),
-            //    steady_update_queue: Arc::new(Mutex::new(SteadyMessageQueue::new())),
-            //    steady_receive_queue: Arc::new(Mutex::new((SteadyMessageQueue::new(), true))),
-            //    remote_addr: peer_addr,
-            //    uuid: uuid_real,
-            //});
             return Some(LanConnection::new(uuid_real, reader, peer_addr));
         }
 
         None
     }
 
-    async fn send_fast_update(&self, connection: LanConnection, data: &[u8]) -> std::io::Result<usize> {
+    async fn send_fast_update(
+        &self,
+        connection: LanConnection,
+        data: &[u8]
+    ) -> std::io::Result<usize> {
         if FAKE_LAG {
             tokio::time::sleep(Duration::from_millis(FAKE_LAG_TIME)).await;
         }
@@ -294,7 +299,9 @@ impl LanListener {
             if FAKE_LAG {
                 tokio::time::sleep(Duration::from_millis(FAKE_LAG_TIME)).await;
             }
-            let (len, addr) = fast_update.recv_from(&mut buf).await.expect("failed to receive from udp socket");
+            let (len, addr) = fast_update
+                .recv_from(&mut buf).await
+                .expect("failed to receive from udp socket");
             let mut deserialiser = rmp_serde::Deserializer::new(&buf[..len]);
             let packet = FastPacketLan::deserialize(&mut deserialiser);
             if let Err(e) = packet {
@@ -330,7 +337,11 @@ impl LanListener {
 }
 
 impl LanConnection {
-    pub fn new(uuid: ConnectionUUID, steady_update: Framed<TcpStream, LengthDelimitedCodec>, peer_addr: SocketAddr) -> Self {
+    pub fn new(
+        uuid: ConnectionUUID,
+        steady_update: Framed<TcpStream, LengthDelimitedCodec>,
+        peer_addr: SocketAddr
+    ) -> Self {
         let (steady_sender_to_client, steady_receiver_at_tcpthread) = mpsc::channel(100);
         let (steady_sender_at_tcpthread, steady_receiver_from_tcpthread) = mpsc::channel(100);
         let the_self = Self {
@@ -343,12 +354,21 @@ impl LanConnection {
         };
         let the_clone = the_self.clone();
         tokio::spawn(async move {
-            the_clone.tcp_thread(steady_sender_at_tcpthread, steady_receiver_at_tcpthread, steady_update).await;
+            the_clone.tcp_thread(
+                steady_sender_at_tcpthread,
+                steady_receiver_at_tcpthread,
+                steady_update
+            ).await;
         });
         the_self
     }
 
-    pub async fn serialise_and_send_fast(&self, to_uuid: ConnectionUUID, listener: LanListener, packet: FastPacketData) -> std::io::Result<usize> {
+    pub async fn serialise_and_send_fast(
+        &self,
+        to_uuid: ConnectionUUID,
+        listener: LanListener,
+        packet: FastPacketData
+    ) -> std::io::Result<usize> {
         let mut buffer = Vec::new();
         let packet = FastPacketLan {
             uuid: to_uuid,
@@ -360,11 +380,17 @@ impl LanConnection {
         listener.send_fast_update(self.clone(), &buffer).await
     }
 
-    pub async fn serialise_and_send_steady(&self, packet: SteadyPacketData) -> Result<(), SendError<SteadyPacketData>> {
+    pub async fn serialise_and_send_steady(
+        &self,
+        packet: SteadyPacketData
+    ) -> Result<(), SendError<SteadyPacketData>> {
         self.steady_update.send(packet).await
     }
 
-    pub async fn attempt_receive_fast_and_deserialise(&self, listener: LanListener) -> Option<FastPacketData> {
+    pub async fn attempt_receive_fast_and_deserialise(
+        &self,
+        listener: LanListener
+    ) -> Option<FastPacketData> {
         let last_fast_update_received = listener.check_for_fast_update(&self.uuid).await;
         if let Some(last_fast_update_received) = last_fast_update_received {
             if let FastPacketPotentials::FastPacket(packet) = last_fast_update_received.data {
@@ -374,7 +400,10 @@ impl LanConnection {
         None
     }
 
-    pub async fn attempt_receive_steady_and_deserialise(&self, steady_receiver: &mut mpsc::Receiver<SteadyPacketData>) -> Result<Option<SteadyPacketData>, ConnectionError> {
+    pub async fn attempt_receive_steady_and_deserialise(
+        &self,
+        steady_receiver: &mut mpsc::Receiver<SteadyPacketData>
+    ) -> Result<Option<SteadyPacketData>, ConnectionError> {
         let packet = steady_receiver.recv().await;
         if let Some(packet) = packet {
             Ok(Some(packet))
@@ -385,8 +414,12 @@ impl LanConnection {
         }
     }
 
-    // sender receives from client and sends to other threads, receiver receives from other threads and sends to client
-    pub async fn tcp_thread(&self, sender: mpsc::Sender<SteadyPacketData>, mut receiver: mpsc::Receiver<SteadyPacketData>, mut reader: Framed<TcpStream, LengthDelimitedCodec>) {
+    pub async fn tcp_thread(
+        &self,
+        sender: mpsc::Sender<SteadyPacketData>,
+        mut receiver: mpsc::Receiver<SteadyPacketData>,
+        mut reader: Framed<TcpStream, LengthDelimitedCodec>
+    ) {
         loop {
             tokio::select! {
                 attempt = StreamExt::next(&mut reader) => {
@@ -401,7 +434,7 @@ impl LanConnection {
                             }
                         }
                     } else {
-                        // connection closed
+
                         self.is_connected.store(false, Ordering::Relaxed);
                         break;
                     }
@@ -421,7 +454,11 @@ impl LanConnection {
 }
 
 impl ClientLanConnection {
-    pub async fn connect(hostname: &str, tcp_port: u16, udp_port: u16) -> Option<(Self, Framed<TcpStream, LengthDelimitedCodec>, mpsc::Receiver<SteadyPacketData>)> {
+    pub async fn connect(
+        hostname: &str,
+        tcp_port: u16,
+        udp_port: u16
+    ) -> Option<(Self, Framed<TcpStream, LengthDelimitedCodec>, mpsc::Receiver<SteadyPacketData>)> {
         let stream = TcpStream::connect(format!("{}:{}", hostname, tcp_port)).await.ok()?;
         let mut reader = Framed::new(stream, LengthDelimitedCodec::new());
         debug!("connected to server");
@@ -431,18 +468,24 @@ impl ClientLanConnection {
         let data = serialiser.into_inner();
         reader.send(Bytes::from(data)).await.ok()?;
         debug!("sent join request");
-        let buffer = StreamExt::next(&mut reader).await.expect("failed to read result from server").expect("error reading result from server");
+        let buffer = StreamExt::next(&mut reader).await
+            .expect("failed to read result from server")
+            .expect("error reading result from server");
         let mut deserialiser = rmp_serde::Deserializer::new(buffer.as_ref());
         let packet = ConnectionHandshakePacket::deserialize(&mut deserialiser).unwrap();
         if let ConnectionHandshakePacket::PleaseConnectUDPNow(uuid) = packet {
             debug!("received join response");
             debug!("our uuid is {}", uuid);
             let remote_addr: SocketAddr = format!("{}:{}", hostname, udp_port).parse().unwrap();
-            let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-                "0.0.0.0:0"
-            } else {
-                "[::]:0"
-            }.parse().unwrap();
+            let local_addr: SocketAddr = (
+                if remote_addr.is_ipv4() {
+                    "0.0.0.0:0"
+                } else {
+                    "[::]:0"
+                }
+            )
+                .parse()
+                .unwrap();
             let socket = UdpSocket::bind(local_addr).await.ok()?;
             socket.connect(remote_addr).await.ok()?;
             debug!("connected to udp");
@@ -450,7 +493,9 @@ impl ClientLanConnection {
             let packet = FastPacketLan {
                 uuid: uuid.clone(),
                 socket_addr: Some(socket.local_addr().unwrap()),
-                data: FastPacketPotentials::ConnectionHandshake(ConnectionHandshakePacket::IconnectedUDP(uuid.clone())),
+                data: FastPacketPotentials::ConnectionHandshake(
+                    ConnectionHandshakePacket::IconnectedUDP(uuid.clone())
+                ),
             };
             let mut serialiser = rmp_serde::Serializer::new(Vec::new());
             packet.serialize(&mut serialiser).unwrap();
@@ -458,9 +503,10 @@ impl ClientLanConnection {
             debug!("told the server we're ready to receive udp");
             socket.send(&data.clone()).await.ok()?;
 
-            // loop until we receive the YoureReady packet
             loop {
-                let buffer = StreamExt::next(&mut reader).await.expect("failed to read result from server").expect("error reading result from server");
+                let buffer = StreamExt::next(&mut reader).await
+                    .expect("failed to read result from server")
+                    .expect("error reading result from server");
                 let mut deserialiser = rmp_serde::Deserializer::new(buffer.as_ref());
                 let packet = ConnectionHandshakePacket::deserialize(&mut deserialiser).unwrap();
                 if let ConnectionHandshakePacket::YoureReady(_) = packet {
@@ -469,11 +515,12 @@ impl ClientLanConnection {
                 }
 
                 if let ConnectionHandshakePacket::PleaseConnectUDPNow(_) = packet {
-                    // server didn't get our IConnectedUDP packet, send it again
                     let packet = FastPacketLan {
                         uuid: uuid.clone(),
                         socket_addr: Some(socket.local_addr().unwrap()),
-                        data: FastPacketPotentials::ConnectionHandshake(ConnectionHandshakePacket::IconnectedUDP(uuid.clone())),
+                        data: FastPacketPotentials::ConnectionHandshake(
+                            ConnectionHandshakePacket::IconnectedUDP(uuid.clone())
+                        ),
                     };
                     let mut serialiser = rmp_serde::Serializer::new(Vec::new());
                     packet.serialize(&mut serialiser).unwrap();
@@ -485,13 +532,19 @@ impl ClientLanConnection {
 
             let (sender, receiver) = mpsc::channel(100);
 
-            return Some((ClientLanConnection {
-                fast_update: Arc::new(socket),
-                fast_update_queue: Arc::new(Mutex::new(FastUpdateQueue::<FastPacketData>::new(None))),
-                steady_sender_queue: sender,
-                steady_receiver_queue: Arc::new(Mutex::new(SteadyMessageQueue::new())),
-                uuid,
-            }, reader, receiver));
+            return Some((
+                ClientLanConnection {
+                    fast_update: Arc::new(socket),
+                    fast_update_queue: Arc::new(
+                        Mutex::new(FastUpdateQueue::<FastPacketData>::new(None))
+                    ),
+                    steady_sender_queue: sender,
+                    steady_receiver_queue: Arc::new(Mutex::new(SteadyMessageQueue::new())),
+                    uuid,
+                },
+                reader,
+                receiver,
+            ));
         }
 
         None
@@ -539,7 +592,11 @@ impl ClientLanConnection {
         }
     }
 
-    pub async fn tcp_listener_thread(&self, mut reader: Framed<TcpStream, LengthDelimitedCodec>, mut receiver: mpsc::Receiver<SteadyPacketData>) {
+    pub async fn tcp_listener_thread(
+        &self,
+        mut reader: Framed<TcpStream, LengthDelimitedCodec>,
+        mut receiver: mpsc::Receiver<SteadyPacketData>
+    ) {
         loop {
             tokio::select! {
                 attempt = StreamExt::next(&mut reader) => {
@@ -589,7 +646,11 @@ impl ClientLanConnection {
     }
 
     pub async fn send_steady_and_serialise(&self, packet: SteadyPacketData) -> std::io::Result<()> {
-        self.steady_sender_queue.send(packet).await.map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "failed to send steady packet"))
+        self.steady_sender_queue
+            .send(packet).await
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::Other, "failed to send steady packet")
+            })
     }
 
     pub async fn attempt_receive_steady_and_deserialise(&self) -> Option<SteadyPacketData> {

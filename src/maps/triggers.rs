@@ -1,5 +1,5 @@
-use gfx_maths::{Quaternion, Vec3};
-use crate::renderer::ht_renderer;
+use gfx_maths::{ Quaternion, Vec3 };
+use crate::renderer::MutRenderer;
 use crate::worldmachine::EntityId;
 
 #[derive(Clone)]
@@ -9,7 +9,7 @@ pub struct Trigger {
     pub scale: Vec3,
     pub report: TriggerReport,
     pub trigger_type: TriggerType,
-    pub trigger_fn: Option<fn(&mut ht_renderer, &mut Trigger, WhoTriggered)>,
+    pub trigger_fn: Option<fn(&mut MutRenderer, &mut Trigger, WhoTriggered)>,
     state: bool,
 }
 
@@ -35,7 +35,10 @@ pub enum WhoTriggered {
 }
 
 impl Trigger {
-    pub fn trigger(trigger_type: TriggerType, trigger_fn: fn(&mut ht_renderer, &mut Trigger, WhoTriggered)) -> Trigger {
+    pub fn trigger(
+        trigger_type: TriggerType,
+        trigger_fn: fn(&mut MutRenderer, &mut Trigger, WhoTriggered)
+    ) -> Trigger {
         Trigger {
             position: Vec3::new(0.0, 0.0, 0.0),
             rotation: Quaternion::new(0.0, 0.0, 0.0, 1.0),

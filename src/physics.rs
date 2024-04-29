@@ -1,16 +1,20 @@
 use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use halfbrown::HashMap;
-use std::ptr::{null_mut};
-use std::sync::{Arc};
+use std::ptr::{ null_mut };
+use std::sync::{ Arc };
 use mutex_timeouts::std::MutexWithTimeout as Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use gfx_maths::{Vec3};
+use std::sync::atomic::{ AtomicUsize, Ordering };
+use gfx_maths::{ Vec3 };
 use physx_sys::*;
 
 lazy_static! {
-    static ref BOX_COLLIDERS: Arc<Mutex<Vec<PhysicsBoxColliderStatic>>> = Arc::new(Mutex::new(Vec::new()));
-    static ref TRIGGER_SHAPES: Arc<Mutex<Vec<PhysicsTriggerShape>>> = Arc::new(Mutex::new(Vec::new()));
+    static ref BOX_COLLIDERS: Arc<Mutex<Vec<PhysicsBoxColliderStatic>>> = Arc::new(
+        Mutex::new(Vec::new())
+    );
+    static ref TRIGGER_SHAPES: Arc<Mutex<Vec<PhysicsTriggerShape>>> = Arc::new(
+        Mutex::new(Vec::new())
+    );
     static ref PHYSICS_SYSTEM: Arc<Mutex<Option<PhysicsSystem>>> = Arc::new(Mutex::new(None));
 
     pub static ref PHYSICS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
@@ -35,11 +39,7 @@ unsafe impl Send for PhysicsSystem {}
 
 unsafe impl Sync for PhysicsSystem {}
 
-unsafe extern "C" fn on_trigger(
-    _: *mut c_void,
-    b: *const PxTriggerPair,
-    n_pairs: u32,
-) {
+unsafe extern "C" fn on_trigger(_: *mut c_void, b: *const PxTriggerPair, n_pairs: u32) {
     let pairs = std::slice::from_raw_parts(b, n_pairs as usize);
     debug!("trigger pairs: {}", pairs.len());
 }
@@ -63,12 +63,19 @@ impl PhysicsSystem {
         scene_desc.simulationEventCallback = callbacks;
 
         unsafe {
-            scene_desc.filterShader = get_default_simulation_filter_shader();//filter_shader as *mut _;
+            scene_desc.filterShader = get_default_simulation_filter_shader();
         }
 
         let nproc = num_cpus::get();
 
-        let dispatcher = unsafe { phys_PxDefaultCpuDispatcherCreate((nproc / 2).min(1) as u32, null_mut(), PxDefaultCpuDispatcherWaitForWorkMode::WaitForWork, 0) };
+        let dispatcher = unsafe {
+            phys_PxDefaultCpuDispatcherCreate(
+                (nproc / 2).min(1) as u32,
+                null_mut(),
+                PxDefaultCpuDispatcherWaitForWorkMode::WaitForWork,
+                0
+            )
+        };
 
         scene_desc.cpuDispatcher = dispatcher as *mut _;
 
@@ -87,13 +94,15 @@ impl PhysicsSystem {
             foundation: Arc::new(Mutex::new(foundation)),
             physics: Arc::new(Mutex::new(physics)),
             dispatcher: Arc::new(Mutex::new(dispatcher)),
-            scene, controller_manager, physics_materials };
+            scene,
+            controller_manager,
+            physics_materials,
+        };
 
         PHYSICS_SYSTEM.lock().unwrap().replace(sys.clone());
         sys
     }
 
-    // drop colliders and shapes before switching scenes
     pub fn cleanup() {
         let lock = PHYSICS_LOCK.lock().unwrap();
         let mut box_colliders = BOX_COLLIDERS.lock().unwrap();
@@ -118,7 +127,9 @@ impl PhysicsSystem {
 
     pub fn copy_with_new_scene(&self) -> Self {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        let mut scene_desc = unsafe { PxSceneDesc_new(PxPhysics_getTolerancesScale(*self.physics.lock().unwrap())) };
+        let mut scene_desc = unsafe {
+            PxSceneDesc_new(PxPhysics_getTolerancesScale(*self.physics.lock().unwrap()))
+        };
         scene_desc.gravity = PxVec3 {
             x: 0.0,
             y: GRAVITY,
@@ -132,14 +143,23 @@ impl PhysicsSystem {
         scene_desc.simulationEventCallback = callbacks;
 
         unsafe {
-            scene_desc.filterShader = get_default_simulation_filter_shader();//filter_shader as *mut _;
+            scene_desc.filterShader = get_default_simulation_filter_shader();
         }
 
-        let dispatcher = unsafe { phys_PxDefaultCpuDispatcherCreate(2, null_mut(), PxDefaultCpuDispatcherWaitForWorkMode::WaitForWork, 0) };
+        let dispatcher = unsafe {
+            phys_PxDefaultCpuDispatcherCreate(
+                2,
+                null_mut(),
+                PxDefaultCpuDispatcherWaitForWorkMode::WaitForWork,
+                0
+            )
+        };
 
         scene_desc.cpuDispatcher = dispatcher as *mut _;
 
-        let scene = unsafe { PxPhysics_createScene_mut(*self.physics.lock().unwrap(), &scene_desc) };
+        let scene = unsafe {
+            PxPhysics_createScene_mut(*self.physics.lock().unwrap(), &scene_desc)
+        };
 
         let controller_manager = unsafe { phys_PxCreateControllerManager(scene, true) };
 
@@ -149,27 +169,46 @@ impl PhysicsSystem {
 
         drop(lock);
 
-        Self { foundation: self.foundation.clone(), physics: self.physics.clone(), dispatcher: self.dispatcher.clone(), scene, controller_manager, physics_materials: self.physics_materials.clone() }
+        Self {
+            foundation: self.foundation.clone(),
+            physics: self.physics.clone(),
+            dispatcher: self.dispatcher.clone(),
+            scene,
+            controller_manager,
+            physics_materials: self.physics_materials.clone(),
+        }
     }
 
     pub fn tick(&self, delta_time: f32) -> Option<f32> {
-        if delta_time <= 0.001 { // physics doesn't like small time steps
+        if delta_time <= 0.001 {
             return Some(delta_time);
         }
 
         let lock = PHYSICS_LOCK.lock().unwrap();
-        unsafe { PxScene_simulate_mut(self.scene, delta_time, null_mut(), null_mut(), 0, true) };
+        unsafe {
+            PxScene_simulate_mut(self.scene, delta_time, null_mut(), null_mut(), 0, true);
+        }
         let mut error = 0u32;
-        unsafe { PxScene_fetchResults_mut(self.scene, true, &mut error) };
+        unsafe {
+            PxScene_fetchResults_mut(self.scene, true, &mut error);
+        }
         assert_eq!(error, 0, "physx error: {}", error);
         drop(lock);
         None
     }
 
-    pub fn create_character_controller(&self, radius: f32, height: f32, step_offset: f32, material: Materials) -> Option<PhysicsCharacterController> {
+    pub fn create_character_controller(
+        &self,
+        radius: f32,
+        height: f32,
+        step_offset: f32,
+        material: Materials
+    ) -> Option<PhysicsCharacterController> {
         let lock = PHYSICS_LOCK.lock().unwrap();
         let mut controller_desc = unsafe { PxCapsuleControllerDesc_new_alloc() };
-        unsafe { PxCapsuleControllerDesc_setToDefault_mut(controller_desc) };
+        unsafe {
+            PxCapsuleControllerDesc_setToDefault_mut(controller_desc);
+        }
         let material = self.physics_materials.get(&material).unwrap();
         unsafe {
             (*controller_desc).height = height;
@@ -178,7 +217,10 @@ impl PhysicsSystem {
             (*controller_desc).material = material.material;
 
             if PxCapsuleControllerDesc_isValid(controller_desc) {
-                let controller = PxControllerManager_createController_mut(self.controller_manager, controller_desc as *mut _);
+                let controller = PxControllerManager_createController_mut(
+                    self.controller_manager,
+                    controller_desc as *mut _
+                );
 
                 drop(lock);
                 Some(PhysicsCharacterController {
@@ -193,10 +235,14 @@ impl PhysicsSystem {
         }
     }
 
-    pub fn create_box_collider_static(&self, position: Vec3, size: Vec3, material: Materials) -> Option<PhysicsBoxColliderStatic> {
+    pub fn create_box_collider_static(
+        &self,
+        position: Vec3,
+        size: Vec3,
+        material: Materials
+    ) -> Option<PhysicsBoxColliderStatic> {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        // physx defines the center of the box as the center of the bottom face
-        // me19 defines the center of the box as the top right of the bottom face
+
         let position = position;
         let size = size;
 
@@ -218,14 +264,20 @@ impl PhysicsSystem {
 
         let material = self.physics_materials.get(&material).unwrap();
 
-        let box_actor = unsafe { PxPhysics_createRigidStatic_mut(*self.physics.lock().unwrap(), &transform) };
-        let shape_flags = PxShapeFlag::SimulationShape as u8 | PxShapeFlag::SceneQueryShape as u8;
+        let box_actor = unsafe {
+            PxPhysics_createRigidStatic_mut(*self.physics.lock().unwrap(), &transform)
+        };
+        let shape_flags =
+            (PxShapeFlag::SimulationShape as u8) | (PxShapeFlag::SceneQueryShape as u8);
         let shape_flags = PxShapeFlags::from_bits(shape_flags).unwrap();
         let box_shape = unsafe {
             PxPhysics_createShape_mut(
                 *self.physics.lock().unwrap(),
                 &geometry as *const PxBoxGeometry as *const PxGeometry,
-                material.material, true, shape_flags)
+                material.material,
+                true,
+                shape_flags
+            )
         };
 
         unsafe {
@@ -240,10 +292,13 @@ impl PhysicsSystem {
         })
     }
 
-    pub fn create_sphere_actor(&self, position: Vec3, radius: f32, material: Materials) -> Option<PhysicsSphereColliderDynamic> {
+    pub fn create_sphere_actor(
+        &self,
+        position: Vec3,
+        radius: f32,
+        material: Materials
+    ) -> Option<PhysicsSphereColliderDynamic> {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        // physx defines the center of the box as the center of the bottom face
-        // me19 defines the center of the box as the top right of the bottom face
         let position = position;
         let radius = radius;
 
@@ -266,12 +321,13 @@ impl PhysicsSystem {
         let material = self.physics_materials.get(&material).unwrap();
 
         let actor = unsafe {
-            phys_PxCreateDynamic(*self.physics.lock().unwrap(),
-                                 &transform,
-                                 &geometry as *const PxSphereGeometry as *const PxGeometry,
-                                 material.material,
-                                 1.0,
-                                 &PxTransform_new_2(PxIDENTITY::PxIdentity),
+            phys_PxCreateDynamic(
+                *self.physics.lock().unwrap(),
+                &transform,
+                &geometry as *const PxSphereGeometry as *const PxGeometry,
+                material.material,
+                1.0,
+                &PxTransform_new_2(PxIDENTITY::PxIdentity)
             )
         };
 
@@ -286,10 +342,13 @@ impl PhysicsSystem {
         })
     }
 
-    pub fn create_trigger_shape(&self, position: Vec3, size: Vec3, material: Materials) -> Option<PhysicsTriggerShape> {
+    pub fn create_trigger_shape(
+        &self,
+        position: Vec3,
+        size: Vec3,
+        material: Materials
+    ) -> Option<PhysicsTriggerShape> {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        // physx defines the center of the box as the center of the bottom face
-        // me19 defines the center of the box as the top right of the bottom face
         let position = position + Vec3::new(size.x / 2.0, size.y / 2.0, -size.z / 2.0);
         let size = size;
 
@@ -311,14 +370,19 @@ impl PhysicsSystem {
 
         let material = self.physics_materials.get(&material).unwrap();
 
-        let box_actor = unsafe { PxPhysics_createRigidStatic_mut(*self.physics.lock().unwrap(), &transform) };
+        let box_actor = unsafe {
+            PxPhysics_createRigidStatic_mut(*self.physics.lock().unwrap(), &transform)
+        };
         let shape_flags = PxShapeFlag::TriggerShape as u8;
         let shape_flags = PxShapeFlags::from_bits(shape_flags).unwrap();
         let box_shape = unsafe {
             PxPhysics_createShape_mut(
                 *self.physics.lock().unwrap(),
                 &geometry as *const PxBoxGeometry as *const PxGeometry,
-                material.material, true, shape_flags)
+                material.material,
+                true,
+                shape_flags
+            )
         };
 
         unsafe {
@@ -370,7 +434,15 @@ unsafe impl Send for PhysicsCharacterController {}
 unsafe impl Sync for PhysicsCharacterController {}
 
 impl PhysicsCharacterController {
-    pub fn move_by(&mut self, displacement: Vec3, jump: bool, server: Option<bool>, cheat: bool, delta_time: f32, frame_delta: f32) -> Vec3 {
+    pub fn move_by(
+        &mut self,
+        displacement: Vec3,
+        jump: bool,
+        server: Option<bool>,
+        cheat: bool,
+        delta_time: f32,
+        frame_delta: f32
+    ) -> Vec3 {
         let lock = PHYSICS_LOCK.lock().unwrap();
         if delta_time <= 0.0 || frame_delta <= 0.0 {
             return Vec3::zero();
@@ -382,11 +454,7 @@ impl PhysicsCharacterController {
             z: displacement.z,
         };
 
-        let do_gravity = if let Some(server) = server {
-            server
-        } else {
-            true
-        };
+        let do_gravity = if let Some(server) = server { server } else { true };
 
         if jump && self.is_on_ground() {
             unsafe {
@@ -414,16 +482,23 @@ impl PhysicsCharacterController {
         }
 
         unsafe {
-            let flags = PxController_move_mut(*self.controller.lock().unwrap(),
-                                              &displacement,
-                                              0.0,
-                                              delta_time,
-                                              &PxControllerFilters_new(null_mut(), null_mut(), null_mut()), null_mut());
+            let flags = PxController_move_mut(
+                *self.controller.lock().unwrap(),
+                &displacement,
+                0.0,
+                delta_time,
+                &PxControllerFilters_new(null_mut(), null_mut(), null_mut()),
+                null_mut()
+            );
             *self.flags.lock().unwrap() = CollisionFlags::from_bits(flags.bits());
         }
 
         drop(lock);
-        Vec3::new(displacement.x / frame_delta, displacement.y / delta_time, displacement.z / frame_delta)
+        Vec3::new(
+            displacement.x / frame_delta,
+            displacement.y / delta_time,
+            displacement.z / frame_delta
+        )
     }
 
     pub fn is_on_ground(&self) -> bool {
@@ -433,9 +508,7 @@ impl PhysicsCharacterController {
 
     pub fn get_position(&self) -> Vec3 {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        let position = unsafe {
-            PxController_getPosition(*self.controller.lock().unwrap())
-        };
+        let position = unsafe { PxController_getPosition(*self.controller.lock().unwrap()) };
         let x = unsafe { (*position).x };
         let y = unsafe { (*position).y };
         let z = unsafe { (*position).z };
@@ -445,12 +518,10 @@ impl PhysicsCharacterController {
 
     pub fn get_foot_position(&self) -> Vec3 {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        let position = unsafe {
-            PxController_getFootPosition(*self.controller.lock().unwrap())
-        };
-        let x = (position).x;
-        let y = (position).y;
-        let z = (position).z;
+        let position = unsafe { PxController_getFootPosition(*self.controller.lock().unwrap()) };
+        let x = position.x;
+        let y = position.y;
+        let z = position.z;
         drop(lock);
         Vec3::new(x as f32, y as f32, z as f32)
     }
@@ -516,8 +587,6 @@ impl PhysicsBoxColliderStatic {
         drop(lock);
     }
 
-    /// # Safety
-    /// could cause a double free, use drop instead
     pub unsafe fn remove_self(&self, physics: PhysicsSystem) {
         let lock = PHYSICS_LOCK.lock().unwrap();
         unsafe {
@@ -577,14 +646,16 @@ impl PhysicsSphereColliderDynamic {
         };
 
         unsafe {
-            PxRigidBody_addForce_mut(self.actor as *mut PxRigidBody, &velocity,
-                                     PxForceMode::VelocityChange, true);
+            PxRigidBody_addForce_mut(
+                self.actor as *mut PxRigidBody,
+                &velocity,
+                PxForceMode::VelocityChange,
+                true
+            );
         }
         drop(lock);
     }
 
-    /// # Safety
-    /// could cause a double free, use drop instead
     pub unsafe fn remove_self(&self, physics: PhysicsSystem) {
         let lock = PHYSICS_LOCK.lock().unwrap();
         unsafe {
@@ -596,12 +667,10 @@ impl PhysicsSphereColliderDynamic {
 
     pub fn get_position(&self) -> Vec3 {
         let lock = PHYSICS_LOCK.lock().unwrap();
-        let position = unsafe {
-            PxRigidActor_getGlobalPose(self.actor as *const PxRigidActor).p
-        };
-        let x = (position).x;
-        let y = (position).y;
-        let z = (position).z;
+        let position = unsafe { PxRigidActor_getGlobalPose(self.actor as *const PxRigidActor).p };
+        let x = position.x;
+        let y = position.y;
+        let z = position.z;
         drop(lock);
         Vec3::new(x, y, z)
     }
@@ -669,8 +738,6 @@ impl PhysicsTriggerShape {
         drop(lock);
     }
 
-    /// # Safety
-    /// could cause a double free, use drop instead
     pub unsafe fn remove_self(&self, physics: PhysicsSystem) {
         let lock = PHYSICS_LOCK.lock().unwrap();
         unsafe {
