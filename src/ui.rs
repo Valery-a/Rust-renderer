@@ -2,7 +2,15 @@ use std::collections::VecDeque;
 use std::sync::atomic::{ AtomicBool, Ordering };
 use std::sync::{ Arc, Mutex };
 use egui_glfw_gl::egui;
-use egui_glfw_gl::egui::{ Color32, Frame, Rgba, SidePanel, Style, TopBottomPanel, Ui };
+use egui_glfw_gl::egui::{
+    Color32,
+    Frame,
+    Rgba,
+    SidePanel,
+    Style,
+    TopBottomPanel,
+    Ui,
+};
 use gfx_maths::Vec3;
 use crate::renderer::MutRenderer;
 use crate::ui_defs::chat;
@@ -24,10 +32,12 @@ lazy_static! {
         })
     );
 
-    pub static ref INTROSND_INFO: Arc<Mutex<IntrosndInfo>> = Arc::new(
-        Mutex::new(IntrosndInfo {
+    pub static ref INTROSND_INFO: Arc<Mutex<introsndInfo>> = Arc::new(
+        Mutex::new(introsndInfo {
             powered_by_opacity: 0.0,
+            show_copyright: false,
             powered_by: None,
+            copyright: None,
         })
     );
 
@@ -35,9 +45,11 @@ lazy_static! {
     pub static ref DISCONNECTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 }
 
-pub struct IntrosndInfo {
+pub struct introsndInfo {
     pub powered_by_opacity: f32,
+    pub show_copyright: bool,
     powered_by: Option<egui::TextureHandle>,
+    copyright: Option<egui::TextureHandle>,
 }
 
 pub struct OnScreenDebugLog {
@@ -71,7 +83,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine) {
     let (mut set_name, mut send_message) = (None, None);
 
     egui::Window
-        ::new("chatW")
+        ::new("chat")
         .title_bar(false)
         .resizable(false)
         .collapsible(false)
@@ -91,7 +103,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine) {
     }
 
     egui::Window
-        ::new("right")
+        ::new("right debug")
         .title_bar(false)
         .resizable(false)
         .collapsible(false)
@@ -111,7 +123,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine) {
                 ui.style_mut().visuals.widgets.noninteractive.bg_fill = Color32::from(
                     Rgba::from_rgb(0.8, 0.0, 0.0)
                 );
-                ui.label("BAD connection!");
+                ui.label("unstable connection!");
                 ui.style_mut().visuals.widgets.noninteractive.bg_fill = style;
             }
 
@@ -120,7 +132,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine) {
                 ui.style_mut().visuals.widgets.noninteractive.bg_fill = Color32::from(
                     Rgba::from_rgb(0.8, 0.0, 0.0)
                 );
-                ui.label("disconnected from the server!");
+                ui.label("you have disconnected from the server ):");
                 ui.style_mut().visuals.widgets.noninteractive.bg_fill = style;
             }
         });
@@ -156,12 +168,22 @@ pub fn init_introsnd(renderer: &mut MutRenderer) {
             let powered_by_data = crate::textures
                 ::load_image("base/textures/ui/poweredby.png")
                 .expect("failed to load base/textures/ui/poweredby.png!");
+            let copyright_data = crate::textures
+                ::load_image("base/textures/ui/developedby.png")
+                .expect("failed to load base/textures/ui/developedby.png!");
             let powered_by_image = egui::ColorImage::from_rgba_unmultiplied(
                 [powered_by_data.dimensions.0 as _, powered_by_data.dimensions.1 as _],
                 &powered_by_data.data
             );
+            let copyright_image = egui::ColorImage::from_rgba_unmultiplied(
+                [copyright_data.dimensions.0 as _, copyright_data.dimensions.1 as _],
+                &copyright_data.data
+            );
             introsnd_info.powered_by.replace(
                 ui.ctx().load_texture("powered_by", powered_by_image, egui::TextureOptions::NEAREST)
+            );
+            introsnd_info.copyright.replace(
+                ui.ctx().load_texture("copyright", copyright_image, egui::TextureOptions::NEAREST)
             );
         });
 
@@ -187,11 +209,37 @@ pub fn init_introsnd(renderer: &mut MutRenderer) {
 }
 
 pub fn render_introsnd(renderer: &mut MutRenderer) {
-    let introsnd_info = INTROSND_INFO.lock().unwrap();
+    let mut introsnd_info = INTROSND_INFO.lock().unwrap();
 
     let window_size = renderer.window_size;
     let poweredby_width = window_size.y / 2.0;
     let poweredby_height = poweredby_width / 2.0;
+
+    if !introsnd_info.show_copyright {
+        TopBottomPanel::bottom("powered_by")
+            .frame(Frame::none())
+            .show_separator_line(false)
+            .resizable(false)
+            .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
+                if let Some(poweredby) = &introsnd_info.powered_by {
+                    let image = egui::Image::new(poweredby, [poweredby_width, poweredby_height]);
+                    let tint = Rgba::from_white_alpha(introsnd_info.powered_by_opacity);
+                    let image = image.tint(tint);
+                    ui.add(image);
+                }
+            });
+    } else {
+        TopBottomPanel::bottom("copyright")
+            .frame(Frame::none())
+            .show_separator_line(false)
+            .resizable(false)
+            .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
+                if let Some(copyright) = &introsnd_info.copyright {
+                    let image = egui::Image::new(copyright, [window_size.x, window_size.y]);
+                    ui.add(image);
+                }
+            });
+    }
 
     let egui::FullOutput {
         platform_output,
@@ -218,7 +266,7 @@ fn render_debug_location(ui: &mut Ui) {
     let debug_location = DEBUG_LOCATION.lock().unwrap();
     ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
         ui.label(
-            format!("X- {}, Y- {}, Z- {}", debug_location.x, debug_location.y, debug_location.z)
+            format!("x: {}, y: {}, z: {}", debug_location.x, debug_location.y, debug_location.z)
         );
     });
 }
@@ -227,7 +275,23 @@ fn render_fps(ui: &mut Ui) {
     let fps = FPS.lock().unwrap();
     let bob_t = BOB_T.lock().unwrap();
     ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
-        ui.label(format!("FRAMES: {}", *fps as u32));
+        ui.label(format!("FPS: {}", *fps as u32));
         ui.label(format!("BOB_T: {}", *bob_t));
     });
+}
+
+fn render_debug_log(ui: &mut Ui) {
+    let mut debug_log = DEBUG_LOG.lock().unwrap();
+    let log = debug_log.get();
+    ui.add_space(10.0);
+    for message in log {
+        ui.allocate_ui_with_layout(
+            egui::Vec2::new(200.0, 200.0),
+            egui::Layout::left_to_right(egui::Align::LEFT),
+            |ui| {
+                ui.add_space(10.0);
+                ui.label(message);
+            }
+        );
+    }
 }

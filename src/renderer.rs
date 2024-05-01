@@ -1,9 +1,6 @@
 use halfbrown::HashMap;
 use std::ffi::{ c_void, CString };
-use std::io::{ BufReader, Read };
-use std::ops::{ DerefMut };
-use std::os::raw::{ c_uint, c_ulong };
-use std::ptr::{ null_mut };
+use std::ptr::null_mut;
 use std::sync::{ Arc, Mutex };
 use std::sync::atomic::{ AtomicBool, AtomicU8, Ordering };
 use std::sync::mpsc::Receiver;
@@ -16,7 +13,7 @@ use rand::Rng;
 use crate::shaders::*;
 use crate::camera::*;
 use crate::helpers;
-use crate::helpers::{ load_string_from_file, set_shader_if_not_already };
+use crate::helpers::{ load_string_from_file, set_shader_if_not_set };
 use crate::light::Light;
 use crate::meshes::{ IntermidiaryMesh, Mesh };
 use crate::textures::{ IntermidiaryTexture, Texture };
@@ -639,18 +636,18 @@ impl MutRenderer {
         self.load_shader("rainbow").expect(
             "encountered a problem when trying to load rainbow shader"
         );
-        self.load_texture_if_not_already_loaded_synch("default").expect(
+        self.load_texture_if_not_loaded_synch("default").expect(
             "encountered a problem when trying to load the default texture"
         );
-        self.load_texture_if_not_already_loaded_synch("snowball").expect(
+        self.load_texture_if_not_loaded_synch("snowball").expect(
             "encountered a problem when trying to load the ball's texture"
         );
-        self.load_mesh_if_not_already_loaded_synch("snowball").expect(
+        self.load_mesh_if_not_loaded_synch("snowball").expect(
             "encountered a problem when trying to load the ball's mesh"
         );
     }
 
-    pub fn load_texture_if_not_already_loaded(
+    pub fn load_texture_if_not_loaded(
         &mut self,
         name: &str
     ) -> Result<bool, crate::textures::TextureError> {
@@ -680,7 +677,7 @@ impl MutRenderer {
         Ok(true)
     }
 
-    pub fn load_texture_if_not_already_loaded_synch(
+    pub fn load_texture_if_not_loaded_synch(
         &mut self,
         name: &str
     ) -> Result<(), crate::textures::TextureError> {
@@ -691,7 +688,7 @@ impl MutRenderer {
         Ok(())
     }
 
-    pub fn load_mesh_if_not_already_loaded(
+    pub fn load_mesh_if_not_loaded(
         &mut self,
         name: &str
     ) -> Result<bool, crate::meshes::MeshError> {
@@ -721,7 +718,7 @@ impl MutRenderer {
         Ok(true)
     }
 
-    pub fn load_mesh_if_not_already_loaded_synch(
+    pub fn load_mesh_if_not_loaded_synch(
         &mut self,
         name: &str
     ) -> Result<(), crate::meshes::MeshError> {
@@ -931,7 +928,7 @@ impl MutRenderer {
     fn setup_pass_one(&mut self) {
         let gbuffer_shader = *self.shaders.get("gbuffer_anim").unwrap();
 
-        set_shader_if_not_already(self, gbuffer_shader);
+        set_shader_if_not_set(self, gbuffer_shader);
 
         unsafe {
             Viewport(0, 0, self.render_size.x as i32, self.render_size.y as i32);
@@ -962,7 +959,7 @@ impl MutRenderer {
                 );
                 let shadow_shader = *self.shaders.get("shadow").unwrap();
 
-                set_shader_if_not_already(self, shadow_shader);
+                set_shader_if_not_set(self, shadow_shader);
             } else if iteration == 4 {
                 BindFramebuffer(
                     FRAMEBUFFER,
@@ -970,7 +967,7 @@ impl MutRenderer {
                 );
                 let shadow_shader = *self.shaders.get("shadow_mask").unwrap();
 
-                set_shader_if_not_already(self, shadow_shader);
+                set_shader_if_not_set(self, shadow_shader);
             }
             Disable(FRAMEBUFFER_SRGB);
             Disable(CULL_FACE);
@@ -1060,7 +1057,7 @@ impl MutRenderer {
         }
     }
 
-    pub fn clear_all_shadow_buffers(&mut self) {
+    pub fn clear_every_shadow_buffer(&mut self) {
         unsafe {
             BindFramebuffer(FRAMEBUFFER, self.backend.framebuffers.shadow_buffer_scratch as GLuint);
             ClearColor(0.0, 0.0, 0.0, 1.0);
@@ -1092,7 +1089,7 @@ impl MutRenderer {
 
     fn setup_pass_two(&mut self, disable_ao: i32) {
         let lighting_shader = *self.shaders.get("lighting").unwrap();
-        set_shader_if_not_already(self, lighting_shader);
+        set_shader_if_not_set(self, lighting_shader);
         let lighting_shader = self.backend.shaders.as_ref().unwrap().get(lighting_shader).unwrap();
 
         unsafe {
@@ -1244,7 +1241,7 @@ impl MutRenderer {
     fn setup_pass_three(&mut self) {
         let postbuffer_shader = *self.shaders.get("postbuffer").unwrap();
 
-        set_shader_if_not_already(self, postbuffer_shader);
+        set_shader_if_not_set(self, postbuffer_shader);
         unsafe {
             BindFramebuffer(FRAMEBUFFER, 0);
             Viewport(0, 0, self.window_size.x as GLsizei, self.window_size.y as GLsizei);

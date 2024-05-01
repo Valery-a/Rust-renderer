@@ -1238,12 +1238,12 @@ impl WorldMachine {
                             }
                         };
                         let texture = texture.unwrap();
-                        let res = renderer.load_mesh_if_not_already_loaded(mesh);
+                        let res = renderer.load_mesh_if_not_loaded(mesh);
                         if res.is_err() {
                             warn!("render: failed to load mesh '{}': {:?}", mesh, res);
                         }
                         let mesh_loaded = res.unwrap();
-                        let res = renderer.load_texture_if_not_already_loaded(texture);
+                        let res = renderer.load_texture_if_not_loaded(texture);
                         if res.is_err() {
                             warn!("render: failed to load texture '{}': {:?}", texture, res);
                         }

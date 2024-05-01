@@ -9,7 +9,7 @@ use gfx_maths::*;
 use gl_matrix::vec3::{ dot, normalize, subtract };
 use gl_matrix::vec4::add;
 use glad_gl::gl::*;
-use crate::helpers::{ calculate_model_matrix, calculate_normal_matrix, set_shader_if_not_already };
+use crate::helpers::{ calculate_model_matrix, calculate_normal_matrix, set_shader_if_not_set };
 use crate::MutRenderer;
 use crate::skeletal_animation::{ SkeletalAnimation, SkeletalAnimations };
 use crate::textures::Texture;
@@ -269,7 +269,7 @@ impl Mesh {
         let mut joint_bo = 0 as GLuint;
         let mut weight_bo = 0 as GLuint;
         unsafe {
-            set_shader_if_not_already(renderer, shader_index);
+            set_shader_if_not_set(renderer, shader_index);
 
             GenVertexArrays(1, &mut vao);
             BindVertexArray(vao);
@@ -642,7 +642,7 @@ impl Mesh {
         let mut joint_bo = 0 as GLuint;
         let mut weight_bo = 0 as GLuint;
         unsafe {
-            set_shader_if_not_already(renderer, shader_index);
+            set_shader_if_not_set(renderer, shader_index);
 
             GenVertexArrays(1, &mut vao);
             BindVertexArray(vao);
@@ -833,7 +833,7 @@ impl Mesh {
         } else {
             *renderer.shaders.get("shadow_mask").unwrap()
         };
-        set_shader_if_not_already(renderer, gbuffer_shader);
+        set_shader_if_not_set(renderer, gbuffer_shader);
         let mut shader = renderer.backend.shaders.as_mut().unwrap()[gbuffer_shader].clone();
         unsafe {
             EnableVertexAttribArray(0);
@@ -841,7 +841,7 @@ impl Mesh {
             if let Some(texture) = texture {
                 if shadow_pass.is_none() {
                     let gbuffer_shader = *renderer.shaders.get("gbuffer_anim").unwrap();
-                    set_shader_if_not_already(renderer, gbuffer_shader);
+                    set_shader_if_not_set(renderer, gbuffer_shader);
                     shader = renderer.backend.shaders.as_mut().unwrap()[gbuffer_shader].clone();
 
                     let material = texture.material;
@@ -1029,7 +1029,7 @@ impl Mesh {
     }
 
     pub fn render_basic_lines(&self, renderer: &mut MutRenderer, shader_index: usize) {
-        set_shader_if_not_already(renderer, shader_index);
+        set_shader_if_not_set(renderer, shader_index);
         let shader = renderer.backend.shaders.as_mut().unwrap()[shader_index].clone();
         unsafe {
             EnableVertexAttribArray(0);

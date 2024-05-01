@@ -144,11 +144,11 @@ async fn main() {
 
         debug!("connected to server");
 
-        renderer.load_mesh_if_not_already_loaded("player");
+        renderer.load_mesh_if_not_loaded("player");
 
         unsafe {
             let lighting_shader = *renderer.shaders.get("lighting").unwrap();
-            helpers::set_shader_if_not_already(&mut renderer, lighting_shader);
+            helpers::set_shader_if_not_set(&mut renderer, lighting_shader);
             let lighting_shader = renderer
                 .backend
                 .shaders
@@ -177,7 +177,7 @@ async fn main() {
         renderer.camera.set_fov(DEFAULT_FOV);
 
         loop {
-            if let Ok(res) = renderer.load_mesh_if_not_already_loaded("player") {
+            if let Ok(res) = renderer.load_mesh_if_not_loaded("player") {
                 if res {
                     break;
                 }
@@ -223,7 +223,7 @@ async fn main() {
             worldmachine.handle_audio(&renderer, &audio, &scontext);
             worldmachine.render(&mut renderer, None);
 
-            renderer.clear_all_shadow_buffers();
+            renderer.clear_every_shadow_buffer();
             let light_count = renderer.lights.len();
             for i in 0..light_count {
                 if renderer.lights[i].casts_shadow {

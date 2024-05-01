@@ -4,7 +4,7 @@ use gfx_maths::{Mat4, Quaternion, Vec2, Vec3};
 use glad_gl::gl::*;
 use std::io::Read;
 
-pub fn set_shader_if_not_already(renderer: &mut MutRenderer, shader_index: usize) {
+pub fn set_shader_if_not_set(renderer: &mut MutRenderer, shader_index: usize) {
     if renderer.backend.current_shader != Some(shader_index) {
         unsafe {
             UseProgram(renderer.backend.shaders.as_mut().unwrap()[shader_index].program);
