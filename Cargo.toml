@@ -10,6 +10,8 @@ graphical = [ "glfw", "egui_glfw_gl", "glad-gl", "fyrox-sound" ]
 linux_graphical = [ "graphical", "glfw/default" ]
 
 [dependencies]
+firebase-rs="2.1.1"
+serde_json = "1.0.116"
 once_cell = "1.19.0"
 sysinfo = "0.30.11"
 diesel = { version = "2.1.5", features = ["postgres"] }

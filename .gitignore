@@ -19,3 +19,4 @@ Cargo.lock
 
 # don't commit glfw lib files
 glfw*
+.env

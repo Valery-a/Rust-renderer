@@ -5,7 +5,6 @@ use std::sync::{ Arc, Mutex };
 use std::sync::atomic::{ AtomicBool, AtomicU8, Ordering };
 use std::sync::mpsc::Receiver;
 use egui_glfw_gl::egui;
-use egui_glfw_gl::egui::Rect;
 use gfx_maths::*;
 use glad_gl::gl::*;
 use glfw::{ Context, Window, WindowEvent };

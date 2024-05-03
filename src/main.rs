@@ -4,6 +4,11 @@ extern crate log;
 extern crate lazy_static;
 extern crate core;
 
+extern crate dotenv;
+use dotenv::dotenv;
+use std::env;
+
+use std::collections::HashMap;
 use fyrox_sound::context::SoundContext;
 use fyrox_sound::engine::SoundEngine;
 use glad_gl::gl::*;
@@ -14,9 +19,9 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use crate::input::keyboard::HTKey;
-use crate::input::{keyboard, mouse};
+use crate::input::{ keyboard, mouse };
 use crate::optimisations::helpers;
-use crate::renderer::{MutRenderer, RGBA};
+use crate::renderer::{ MutRenderer, RGBA };
 use crate::server::lan::ClientLanConnection;
 use crate::server::ConnectionClientside;
 use crate::ui_defs::chat;
@@ -42,16 +47,55 @@ pub mod ui_defs;
 pub mod worldmachine;
 pub mod input;
 
+use serde::{ Deserialize, Serialize };
+use firebase_rs::*;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct User {
+    name: String,
+    age: u32,
+    email: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Response {
+    name: String,
+}
 #[tokio::main]
 #[allow(unused_must_use)]
 async fn main() {
+    dotenv().ok();
     init_logger();
-
     timeouts();
 
+    let user = User {
+        name: "mazna".to_string(),
+        age: 1337,
+        email: "megamazna".to_string(),
+    };
+    let firebase_key = env
+        ::var("FIREBASE_SECRET_KEY")
+        .expect("Expected a secret key in the environment");
+    let firebase = Firebase::new(&firebase_key).unwrap();
+
+    let response = set_user(&firebase, &user).await;
+
+    let users = get_users(&firebase).await;
+    println!("{:?}", users);
+    let mut user = get_user(&firebase, &response.name).await;
+    println!("{:?}", user);
+
+    user.email = "updated.mail@gmail.com".to_string();
+    let updated_user = update_user(&firebase, &response.name, &user).await;
+    println!("{:?}", updated_user);
+
+    //delete_user(&firebase, &response.name).await;
+    println!("User deleted");
+
     let mut args = args();
-    let (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server) =
-        parse_arguments(&mut args);
+    let (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server) = parse_arguments(
+        &mut args
+    );
 
     let start_time = Instant::now();
 
@@ -62,9 +106,8 @@ async fn main() {
             physics,
             25566,
             25567,
-            "0.0.0.0",
-        )
-        .await;
+            "0.0.0.0"
+        ).await;
         let server_clone_a = server.clone();
         let server_clone_b = server.clone();
         let mut server_clone_c = server.clone();
@@ -107,10 +150,11 @@ async fn main() {
         info!("initialized worldmachine");
 
         if let Some(ip) = connect_to_lan_server {
-            let (server_connection, tcpstream, tcpreceiver) =
-                ClientLanConnection::connect(ip.as_str(), 25566, 25567)
-                    .await
-                    .expect("failed to connect to server");
+            let (server_connection, tcpstream, tcpreceiver) = ClientLanConnection::connect(
+                ip.as_str(),
+                25566,
+                25567
+            ).await.expect("failed to connect to server");
             worldmachine.connect_to_server(ConnectionClientside::Lan(server_connection.clone()));
             let the_clone = server_connection.clone();
             tokio::spawn(async move {
@@ -123,7 +167,7 @@ async fn main() {
         } else {
             let mut server = server::Server::new(
                 &level_to_load.unwrap_or("lava".to_string()),
-                physics.clone(),
+                physics.clone()
             );
             let server_clone_a = server.clone();
             let server_clone_b = server.clone();
@@ -148,9 +192,7 @@ async fn main() {
         unsafe {
             let lighting_shader = *renderer.shaders.get("lighting").unwrap();
             helpers::set_shader_if_not_set(&mut renderer, lighting_shader);
-            let lighting_shader = renderer
-                .backend
-                .shaders
+            let lighting_shader = renderer.backend.shaders
                 .as_ref()
                 .unwrap()
                 .get(lighting_shader)
@@ -158,7 +200,7 @@ async fn main() {
             static USE_SHADOWS_C: &'static str = "use_shadows\0";
             let use_shadows_loc = GetUniformLocation(
                 lighting_shader.program,
-                USE_SHADOWS_C.as_ptr() as *const GLchar,
+                USE_SHADOWS_C.as_ptr() as *const GLchar
             );
             Uniform1i(use_shadows_loc, 1);
         }
@@ -170,7 +212,7 @@ async fn main() {
                 b: 0,
                 a: 255,
             },
-            Ordering::SeqCst,
+            Ordering::SeqCst
         );
         crate::ui::SHOW_UI.store(true, Ordering::SeqCst);
         renderer.camera.set_fov(DEFAULT_FOV);
@@ -199,18 +241,15 @@ async fn main() {
             let fps = 1.0 / delta;
             *crate::ui::FPS.lock().unwrap() = fps;
 
-            renderer.backend.input_state.lock().unwrap().input.time =
-                Some(start_time.elapsed().as_secs_f64());
-            renderer
-                .backend
-                .egui_context
+            renderer.backend.input_state.lock().unwrap().input.time = Some(
+                start_time.elapsed().as_secs_f64()
+            );
+            renderer.backend.egui_context
                 .lock()
                 .unwrap()
                 .begin_frame(renderer.backend.input_state.lock().unwrap().input.take());
             worldmachine.next_frame(&mut renderer);
-            let mut updates = worldmachine
-                .client_tick(&mut renderer, physics.clone(), delta)
-                .await;
+            let mut updates = worldmachine.client_tick(&mut renderer, physics.clone(), delta).await;
             worldmachine.tick_connection(&mut updates).await;
 
             if let Some(delta) = physics.tick(delta + compensation_delta) {
@@ -236,11 +275,12 @@ async fn main() {
             renderer.backend.window.lock().unwrap().glfw.poll_events();
             keyboard::reset_keyboard_state();
             mouse::reset_mouse_state();
-            for (_, event) in glfw::flush_messages(renderer.backend.events.lock().unwrap().deref())
-            {
+            for (_, event) in glfw::flush_messages(
+                renderer.backend.events.lock().unwrap().deref()
+            ) {
                 egui_glfw_gl::handle_event(
                     event.clone(),
-                    &mut renderer.backend.input_state.lock().unwrap(),
+                    &mut renderer.backend.input_state.lock().unwrap()
                 );
                 keyboard::tick_keyboard(event.clone());
                 mouse::tick_mouse(event);
@@ -276,26 +316,58 @@ fn parse_arguments(args: &mut std::env::Args) -> (bool, Option<String>, bool, Op
                 skip_intro = true;
             }
             "--level" => {
-                level_to_load =
-                    Option::Some(args.next().expect("expected level name after --level"));
+                level_to_load = Option::Some(
+                    args.next().expect("expected level name after --level")
+                );
             }
             "--lan-server" => {
                 run_as_lan_server = true;
             }
             "--connect-to-lan-server" => {
                 connect_to_lan_server = Option::Some(
-                    args.next()
-                        .expect("expected ip after --connect-to-lan-server"),
+                    args.next().expect("expected ip after --connect-to-lan-server")
                 );
             }
             _ => {}
         }
     }
 
-    (
-        skip_intro,
-        level_to_load,
-        run_as_lan_server,
-        connect_to_lan_server,
-    )
+    (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server)
+}
+async fn set_user(firebase_client: &Firebase, user: &User) -> Response {
+    let firebase = firebase_client.at("users");
+    let _users = firebase.set::<User>(&user).await;
+    return string_to_reponse(&_users.unwrap().data);
+}
+
+async fn get_users(firebase_client: &Firebase) -> HashMap<String, User> {
+    let firebase = firebase_client.at("users");
+    let users = firebase.get::<HashMap<String, User>>().await;
+    println!("{:?}", users);
+    return users.unwrap();
+}
+
+async fn get_user(firebase_client: &Firebase, id: &String) -> User {
+    let firebase = firebase_client.at("users").at(&id);
+    let user = firebase.get::<User>().await;
+    return user.unwrap();
+}
+
+async fn update_user(firebase_client: &Firebase, id: &String, user: &User) -> User {
+    let firebase = firebase_client.at("users").at(&id);
+    let _user = firebase.update::<User>(&user).await;
+    return string_to_user(&_user.unwrap().data);
+}
+
+async fn delete_user(firebase_client: &Firebase, id: &String) {
+    let firebase = firebase_client.at("users").at(&id);
+    let _result = firebase.delete().await;
+}
+
+fn string_to_reponse(s: &str) -> Response {
+    serde_json::from_str(s).unwrap()
+}
+
+fn string_to_user(s: &str) -> User {
+    serde_json::from_str(s).unwrap()
 }
