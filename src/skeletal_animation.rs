@@ -3,7 +3,7 @@ use std::sync::Arc;
 use gfx_maths::*;
 use gltf::animation::util::{ ReadOutputs, Rotations };
 use halfbrown::HashMap;
-use crate::helpers::{
+use crate::optimisations::helpers::{
     from_q64,
     gltf_matrix_to_gfx_maths_mat4,
     interpolate_quaternion,

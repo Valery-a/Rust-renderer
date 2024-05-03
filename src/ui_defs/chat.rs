@@ -1,15 +1,17 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{ Arc, Mutex };
 use egui_glfw_gl::egui;
 use egui_glfw_gl::egui::Ui;
 use crate::worldmachine::WorldMachine;
 
-lazy_static!{
-    pub static ref CHAT_BUFFER: Arc<Mutex<ChatBuffer>> = Arc::new(Mutex::new(ChatBuffer {
-        my_name: "awaiting a name".to_string(),
-        messages: VecDeque::new(),
-        next_message_buffer: "".to_string(),
-    }));
+lazy_static! {
+    pub static ref CHAT_BUFFER: Arc<Mutex<ChatBuffer>> = Arc::new(
+        Mutex::new(ChatBuffer {
+            my_name: "awaiting a name".to_string(),
+            messages: VecDeque::new(),
+            next_message_buffer: "".to_string(),
+        })
+    );
 }
 
 pub struct ChatBuffer {
@@ -38,7 +40,6 @@ pub fn write_chat(name: String, msg: String) {
 }
 
 pub fn chat(ui: &mut Ui, wm: &mut WorldMachine) -> (Option<String>, Option<String>) {
-
     let mut set_name = None;
 
     ui.horizontal(|ui| {

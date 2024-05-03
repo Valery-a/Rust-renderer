@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use gfx_maths::*;
 use serde::{ Deserialize, Serialize };
-use crate::{ helpers, MutRenderer, keyboard, mouse };
+use crate::{ helpers, MutRenderer };
 use crate::camera::EYE_HEIGHT;
 use crate::helpers::lerp;
-use crate::keyboard::HTKey;
-use crate::mouse::MouseButtonState;
+use crate::input::keyboard::HTKey;
+use crate::input::mouse::MouseButtonState;
 use crate::physics::{ Materials, PhysicsCharacterController, PhysicsSystem };
 use crate::server::ConnectionUUID;
 use crate::server::server_player::{
@@ -18,6 +18,9 @@ use crate::server::server_player::{
 use crate::worldmachine::components::COMPONENT_TYPE_PLAYER;
 use crate::worldmachine::ecs::*;
 use crate::worldmachine::{ ClientUpdate, EntityId };
+
+use crate::input::mouse;
+use crate::input::keyboard;
 
 pub const DEFAULT_FOV: f32 = 120.0;
 pub const SPRINT_FOV: f32 = 140.0;
@@ -484,5 +487,11 @@ impl Player {
 
     pub fn set_head_rotation(&mut self, head_rotation: Quaternion) {
         self.head_rotation = head_rotation;
+    }
+
+    pub fn increase_speed(&mut self) {
+        let speed_increase = 10.0;
+        self.movement_speed += speed_increase;
+        println!("Speed increased to {}", self.movement_speed);
     }
 }

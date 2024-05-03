@@ -13,7 +13,9 @@ use std::process;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use crate::keyboard::HTKey;
+use crate::input::keyboard::HTKey;
+use crate::input::{keyboard, mouse};
+use crate::optimisations::helpers;
 use crate::renderer::{MutRenderer, RGBA};
 use crate::server::lan::ClientLanConnection;
 use crate::server::ConnectionClientside;
@@ -25,13 +27,9 @@ pub mod animgraph;
 pub mod audio;
 pub mod camera;
 pub mod common_anim;
-pub mod helpers;
 pub mod introsnd;
-pub mod keyboard;
 pub mod light;
-pub mod maps;
 pub mod meshes;
-pub mod mouse;
 pub mod optimisations;
 pub mod physics;
 pub mod renderer;
@@ -42,6 +40,7 @@ pub mod textures;
 pub mod ui;
 pub mod ui_defs;
 pub mod worldmachine;
+pub mod input;
 
 #[tokio::main]
 #[allow(unused_must_use)]
@@ -102,7 +101,7 @@ async fn main() {
 
         let physics = physics::PhysicsSystem::init();
         info!("initialized physics");
-
+        let mut player = worldmachine::player::Player::default();
         let mut worldmachine = worldmachine::WorldMachine::default();
         worldmachine.initialise(physics.clone(), false);
         info!("initialized worldmachine");
@@ -233,7 +232,7 @@ async fn main() {
                 }
             }
 
-            renderer.swap_buffers(&mut worldmachine).await;
+            renderer.swap_buffers(&mut worldmachine, &mut player).await;
             renderer.backend.window.lock().unwrap().glfw.poll_events();
             keyboard::reset_keyboard_state();
             mouse::reset_mouse_state();

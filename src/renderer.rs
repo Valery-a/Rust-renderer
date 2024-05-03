@@ -10,13 +10,14 @@ use gfx_maths::*;
 use glad_gl::gl::*;
 use glfw::{ Context, Window, WindowEvent };
 use rand::Rng;
+use crate::optimisations::helpers;
 use crate::shaders::*;
 use crate::camera::*;
-use crate::helpers;
-use crate::helpers::{ load_string_from_file, set_shader_if_not_set };
+use crate::optimisations::helpers::{ load_string_from_file, set_shader_if_not_set };
 use crate::light::Light;
 use crate::meshes::{ IntermidiaryMesh, Mesh };
 use crate::textures::{ IntermidiaryTexture, Texture };
+use crate::worldmachine::player::Player;
 use crate::worldmachine::WorldMachine;
 
 pub static MAX_LIGHTS: usize = 20;
@@ -883,11 +884,11 @@ impl MutRenderer {
         self.lights = lights;
     }
 
-    pub async fn swap_buffers(&mut self, wm: &mut WorldMachine) {
+    pub async fn swap_buffers(&mut self, wm: &mut WorldMachine, player: &mut Player) {
         self.setup_pass_two(0);
         self.setup_pass_three();
 
-        crate::ui::render(self, wm).await;
+        crate::ui::render(self, wm, player).await;
 
         unsafe {
             self.backend.window.lock().unwrap().swap_buffers();

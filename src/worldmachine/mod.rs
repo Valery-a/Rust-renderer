@@ -117,13 +117,13 @@ pub struct WorldMachine {
     pub game_data_path: String,
     pub counter: f32,
     pub entities_wanting_to_load_things: Vec<usize>,
-
+    pub command: String,
     lights_changed: bool,
     is_server: bool,
     server_connection: Option<crate::server::ConnectionClientside>,
     world_update_queue: Arc<Mutex<VecDeque<WorldUpdate>>>,
     client_update_queue: Arc<Mutex<VecDeque<ClientUpdate>>>,
-    player: Option<PlayerContainer>,
+    pub player: Option<PlayerContainer>,
     ignore_this_entity: Option<EntityId>,
     pub players: Option<Arc<Mutex<HashMap<ConnectionUUID, ServerPlayerContainer>>>>,
 
@@ -145,6 +145,7 @@ impl Default for WorldMachine {
             last_physics_update: std::time::Instant::now(),
             game_data_path: String::from(""),
             counter: 0.0,
+            command: String::new(),
             entities_wanting_to_load_things: Vec::new(),
             lights_changed: true,
             is_server: false,

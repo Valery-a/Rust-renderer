@@ -9,7 +9,7 @@ use gfx_maths::*;
 use gl_matrix::vec3::{ dot, normalize, subtract };
 use gl_matrix::vec4::add;
 use glad_gl::gl::*;
-use crate::helpers::{ calculate_model_matrix, calculate_normal_matrix, set_shader_if_not_set };
+use crate::optimisations::helpers::{ calculate_model_matrix, calculate_normal_matrix, set_shader_if_not_set };
 use crate::MutRenderer;
 use crate::skeletal_animation::{ SkeletalAnimation, SkeletalAnimations };
 use crate::textures::Texture;
