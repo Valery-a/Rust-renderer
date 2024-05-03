@@ -215,8 +215,8 @@ pub fn animate(renderer: &mut MutRenderer, sss: &SoundContext) {
                 .duration_since(last_time)
                 .expect("failed to get time since last frame")
                 .as_millis() as f32;
-        } else if crate::ui::INTROSND_INFO.lock().unwrap().powered_by_opacity < 1.0 {
-            crate::ui::INTROSND_INFO.lock().unwrap().powered_by_opacity +=
+        } else if crate::ui::INTROSND_INFO.lock().unwrap().introsnd_image_holder_opacity < 1.0 {
+            crate::ui::INTROSND_INFO.lock().unwrap().introsnd_image_holder_opacity +=
                 current_time.duration_since(last_time).unwrap().as_secs_f32() / 10.0;
         }
 
@@ -245,7 +245,7 @@ pub fn animate(renderer: &mut MutRenderer, sss: &SoundContext) {
 
         last_time = current_time;
     }
-    let copyright_time = 2000.0 + normal_time;
+    let display_time = 2000.0 + normal_time;
     let mut last_time = SystemTime::now();
 
     loop {
@@ -254,7 +254,7 @@ pub fn animate(renderer: &mut MutRenderer, sss: &SoundContext) {
             .duration_since(time_of_start)
             .expect("failed to get time since start");
         let time_since_start = time_since_start.as_millis() as f32;
-        if time_since_start > copyright_time {
+        if time_since_start > display_time {
             break;
         }
 
@@ -282,7 +282,7 @@ pub fn animate(renderer: &mut MutRenderer, sss: &SoundContext) {
             Viewport(0, 0, renderer.render_size.x as i32, renderer.render_size.y as i32);
         }
 
-        crate::ui::INTROSND_INFO.lock().unwrap().show_copyright = true;
+        crate::ui::INTROSND_INFO.lock().unwrap().show_image_holder = true;
         renderer.introsnd_swap_buffers();
 
         last_time = current_time;

@@ -1,24 +1,16 @@
+use crate::renderer::MutRenderer;
+use crate::ui_defs::chat;
+use crate::worldmachine::player::Player;
+use crate::worldmachine::WorldMachine;
+use egui_glfw_gl::egui::{ self, RichText };
+use egui_glfw_gl::egui::{ Color32, Frame, Rgba, SidePanel, Style, TopBottomPanel, Ui };
+use gfx_maths::Vec3;
+use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 use std::sync::atomic::{ AtomicBool, Ordering };
 use std::sync::{ Arc, Mutex };
-use sysinfo::{System};
-use egui_glfw_gl::egui::{self, RichText};
-use egui_glfw_gl::egui::{
-    Color32,
-    Frame,
-    Rgba,
-    SidePanel,
-    Style,
-    TopBottomPanel,
-    Ui,
-};
-use gfx_maths::Vec3;
-use crate::renderer::MutRenderer;
-use crate::worldmachine::player::Player;
-use crate::ui_defs::chat;
-use crate::worldmachine::WorldMachine;
-use std::time::{Instant, Duration};
-use once_cell::sync::Lazy;
+use std::time::{ Duration, Instant };
+use sysinfo::System;
 
 use std::collections::HashMap;
 
@@ -80,7 +72,6 @@ impl Trie {
     }
 }
 
-
 lazy_static! {
     pub static ref SHOW_UI: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref SHOW_DEBUG_LOCATION: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
@@ -96,23 +87,19 @@ lazy_static! {
             buffer: VecDeque::new(),
         })
     );
-
-    pub static ref INTROSND_INFO: Arc<Mutex<introsndInfo>> = Arc::new(
-        Mutex::new(introsndInfo {
-            powered_by_opacity: 0.0,
-            show_copyright: false,
-            powered_by: None,
-            copyright: None,
+    pub static ref INTROSND_INFO: Arc<Mutex<IntrosndInfo>> = Arc::new(
+        Mutex::new(IntrosndInfo {
+            introsnd_image_holder_opacity: 0.0,
+            show_image_holder: false,
+            introsnd_image_holder: None,
+            image_holder: None,
         })
     );
-
     static ref COMMAND_TRIE: Trie = {
         let mut trie = Trie::new();
         trie.insert("increase_speed");
-        // Add more commands here as needed
         trie
     };
-
     pub static ref UNSTABLE_CONNECTION: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     pub static ref DISCONNECTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 }
@@ -122,11 +109,11 @@ static SYS_INFO: Lazy<Mutex<(System, Instant, f32)>> = Lazy::new(|| {
     Mutex::new((sys, Instant::now(), 0.0))
 });
 
-pub struct introsndInfo {
-    pub powered_by_opacity: f32,
-    pub show_copyright: bool,
-    powered_by: Option<egui::TextureHandle>,
-    copyright: Option<egui::TextureHandle>,
+pub struct IntrosndInfo {
+    pub introsnd_image_holder_opacity: f32,
+    pub show_image_holder: bool,
+    introsnd_image_holder: Option<egui::TextureHandle>,
+    image_holder: Option<egui::TextureHandle>,
 }
 
 pub struct OnScreenDebugLog {
@@ -184,13 +171,14 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine, player: &
         wm.send_chat_message(message).await;
     }
 
-    egui::Window::new("debug")
+    egui::Window
+        ::new("debug")
         .title_bar(true)
         .resizable(true)
         .collapsible(true)
         .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 10.0))
         .default_width(400.0)
-        .frame(Frame::none().fill(Color32::from_rgb(25, 25, 25))) 
+        .frame(Frame::none().fill(Color32::from_rgb(25, 25, 25)))
         .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Information");
@@ -227,7 +215,6 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine, player: &
         .paint_and_update_textures(1.0, &clipped_shapes, &textures_delta);
 }
 
-
 fn render_fps(ui: &mut Ui) {
     let fps = FPS.lock().unwrap();
     let label_text = format!("FPS: {}", *fps as u32);
@@ -236,7 +223,9 @@ fn render_fps(ui: &mut Ui) {
 
 fn render_memory_usage(ui: &mut Ui) {
     let memory_usage = get_memory_usage();
-    let label_text = RichText::new(format!("Memory Usage: {:.2} MB", memory_usage)).color(Color32::from_rgb(255, 165, 0)); // Orange color for memory usage
+    let label_text = RichText::new(format!("Memory Usage: {:.2} MB", memory_usage)).color(
+        Color32::from_rgb(255, 165, 0)
+    );
     ui.add(egui::Label::new(label_text));
 }
 
@@ -246,7 +235,7 @@ fn get_memory_usage() -> f32 {
 
     if last_updated.elapsed() > Duration::from_secs(5) {
         sys.refresh_memory();
-        *last_value = sys.used_memory() as f32 / 1024.0;
+        *last_value = (sys.used_memory() as f32) / 1024.0;
         *last_updated = Instant::now();
     }
 
@@ -263,33 +252,33 @@ fn render_debug_location(ui: &mut Ui) {
 }
 
 pub fn render_introsnd(renderer: &mut MutRenderer) {
-    let mut introsnd_info = INTROSND_INFO.lock().unwrap();
+    let introsnd_info = INTROSND_INFO.lock().unwrap();
 
     let window_size = renderer.window_size;
     let poweredby_width = window_size.y / 2.0;
     let poweredby_height = poweredby_width / 2.0;
 
-    if !introsnd_info.show_copyright {
-        TopBottomPanel::bottom("powered_by")
+    if !introsnd_info.show_image_holder {
+        TopBottomPanel::bottom("introsnd_image_holder")
             .frame(Frame::none())
             .show_separator_line(false)
             .resizable(false)
             .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
-                if let Some(poweredby) = &introsnd_info.powered_by {
+                if let Some(poweredby) = &introsnd_info.introsnd_image_holder {
                     let image = egui::Image::new(poweredby, [poweredby_width, poweredby_height]);
-                    let tint = Rgba::from_white_alpha(introsnd_info.powered_by_opacity);
+                    let tint = Rgba::from_white_alpha(introsnd_info.introsnd_image_holder_opacity);
                     let image = image.tint(tint);
                     ui.add(image);
                 }
             });
     } else {
-        TopBottomPanel::bottom("copyright")
+        TopBottomPanel::bottom("image_holder")
             .frame(Frame::none())
             .show_separator_line(false)
             .resizable(false)
             .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
-                if let Some(copyright) = &introsnd_info.copyright {
-                    let image = egui::Image::new(copyright, [window_size.x, window_size.y]);
+                if let Some(image_holder) = &introsnd_info.image_holder {
+                    let image = egui::Image::new(image_holder, [window_size.x, window_size.y]);
                     ui.add(image);
                 }
             });
@@ -323,25 +312,36 @@ pub fn init_introsnd(renderer: &mut MutRenderer) {
         .resizable(false)
         .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
             let mut introsnd_info = INTROSND_INFO.lock().unwrap();
-            let powered_by_data = crate::textures
+            let introsnd_image_holder_data = crate::textures
                 ::load_image("base/textures/ui/poweredby.png")
                 .expect("failed to load base/textures/ui/poweredby.png!");
-            let copyright_data = crate::textures
+            let image_holder_data = crate::textures
                 ::load_image("base/textures/ui/developedby.png")
                 .expect("failed to load base/textures/ui/developedby.png!");
-            let powered_by_image = egui::ColorImage::from_rgba_unmultiplied(
-                [powered_by_data.dimensions.0 as _, powered_by_data.dimensions.1 as _],
-                &powered_by_data.data
+            let introsnd_image_holder_image = egui::ColorImage::from_rgba_unmultiplied(
+                [
+                    introsnd_image_holder_data.dimensions.0 as _,
+                    introsnd_image_holder_data.dimensions.1 as _,
+                ],
+                &introsnd_image_holder_data.data
             );
-            let copyright_image = egui::ColorImage::from_rgba_unmultiplied(
-                [copyright_data.dimensions.0 as _, copyright_data.dimensions.1 as _],
-                &copyright_data.data
+            let image_holder_image = egui::ColorImage::from_rgba_unmultiplied(
+                [image_holder_data.dimensions.0 as _, image_holder_data.dimensions.1 as _],
+                &image_holder_data.data
             );
-            introsnd_info.powered_by.replace(
-                ui.ctx().load_texture("powered_by", powered_by_image, egui::TextureOptions::NEAREST)
+            introsnd_info.introsnd_image_holder.replace(
+                ui
+                    .ctx()
+                    .load_texture(
+                        "introsnd_image_holder",
+                        introsnd_image_holder_image,
+                        egui::TextureOptions::NEAREST
+                    )
             );
-            introsnd_info.copyright.replace(
-                ui.ctx().load_texture("copyright", copyright_image, egui::TextureOptions::NEAREST)
+            introsnd_info.image_holder.replace(
+                ui
+                    .ctx()
+                    .load_texture("image_holder", image_holder_image, egui::TextureOptions::NEAREST)
             );
         });
 
@@ -368,22 +368,25 @@ pub fn init_introsnd(renderer: &mut MutRenderer) {
 
 fn render_command_panel(ui: &mut Ui, wm: &mut WorldMachine, player: &mut Player) {
     let mut command_result = None;
-    let mut suggestions = Vec::new(); // Suggestions for auto-completion
+    let mut suggestions = Vec::new();
 
     if SHOW_UI.load(Ordering::Relaxed) {
-        egui::Window::new("Command Panel")
+        egui::Window
+            ::new("Command Panel")
             .title_bar(true)
             .resizable(true)
             .default_size(egui::Vec2::new(600.0, 300.0))
-            .frame(Frame::none().fill(Color32::from_rgb(25, 25, 120))) 
-            .hscroll(true) // Enable scrolling if commands overflow
+            .frame(Frame::none().fill(Color32::from_rgb(25, 25, 120)))
+            .hscroll(true)
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Command:");
-                    ui.add(egui::TextEdit::singleline(&mut wm.command)
-                        .hint_text("Type a command here...")
-                        .desired_width(200.0)); // Set desired width for better layout
-
+                    ui.add(
+                        egui::TextEdit
+                            ::singleline(&mut wm.command)
+                            .hint_text("...")
+                            .desired_width(200.0)
+                    );
                     if ui.button("Execute").clicked() {
                         command_result = Some(handle_command(&wm.command, player));
                     }
@@ -391,30 +394,26 @@ fn render_command_panel(ui: &mut Ui, wm: &mut WorldMachine, player: &mut Player)
                         wm.command.clear();
                     }
                 });
-
-                // Auto-completion logic
                 if !wm.command.is_empty() {
-                    // Get auto-completion suggestions based on the current command prefix
                     suggestions = COMMAND_TRIE.suggest_completions(&wm.command);
                 }
-
                 if !suggestions.is_empty() {
                     ui.horizontal(|ui| {
                         ui.label("Suggestions:");
                         ui.vertical(|ui| {
-                            // Display up to 5 auto-completion suggestions
                             for suggestion in suggestions.iter().take(5) {
-                                ui.label(suggestion);
+                                if ui.button(suggestion).clicked() {
+                                    wm.command = suggestion.clone();
+                                }
                             }
                         });
                     });
                 }
-
                 if let Some(result) = command_result {
-                    ui.separator(); // Add a separator for better visual separation
+                    ui.separator();
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing = egui::Vec2::new(10.0, 0.0); // Adjust button spacing
-                        ui.label("Command Feedback:"); // Add label for feedback
+                        ui.spacing_mut().item_spacing = egui::Vec2::new(10.0, 0.0);
+                        ui.label("Command Feedback:");
                         match result {
                             CommandResult::Success => {
                                 ui.colored_label(Color32::GREEN, "Success");
