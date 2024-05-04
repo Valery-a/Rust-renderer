@@ -1,3 +1,5 @@
+use crate::firebase;
+use crate::firebase::db_operations::User;
 use crate::renderer::MutRenderer;
 use crate::ui_defs::chat;
 use crate::worldmachine::player::Player;
@@ -176,7 +178,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine, player: &
         .title_bar(true)
         .resizable(true)
         .collapsible(true)
-        .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 10.0))
+        .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(30.0, 10.0))
         .default_width(400.0)
         .frame(Frame::none().fill(Color32::from_rgb(25, 25, 25)))
         .show(&renderer.backend.egui_context.lock().unwrap(), |ui| {
@@ -192,6 +194,7 @@ pub async fn render(renderer: &mut MutRenderer, wm: &mut WorldMachine, player: &
             render_fps(ui);
             render_memory_usage(ui);
             render_command_panel(ui, wm, player);
+            firebase_admin_panel(ui);
         });
 
     let egui::FullOutput {
@@ -435,5 +438,44 @@ fn handle_command(command: &str, player: &mut Player) -> CommandResult {
             CommandResult::Success
         }
         _ => CommandResult::Failure(format!("Unknown command: {}", command)),
+    }
+}
+static USER_INPUT: Lazy<Mutex<(String, u32, String, String)>> = Lazy::new(|| Mutex::new((String::new(), 0, String::new(), String::new())));
+
+fn firebase_admin_panel(ui: &mut Ui) {
+    let mut user_input = USER_INPUT.lock().unwrap();
+    let (ref mut name, ref mut age, ref mut email, ref mut user_id) = *user_input;
+    let firebase = firebase::db_initialize::initialize_firebase();
+
+    if SHOW_UI.load(Ordering::Relaxed) {
+        egui::Window::new("Firebase Admin Panel")
+            .resizable(true)
+            .collapsible(true)
+            .default_size(egui::vec2(400.0, 300.0))
+            .show(ui.ctx(), |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading("Add New User");
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label("Name:").rect.set_width(50.0);
+                        ui.text_edit_singleline(name);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Age:").rect.set_width(50.0);
+                        ui.add(egui::DragValue::new(age));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Email:").rect.set_width(50.0);
+                        ui.text_edit_singleline(email);
+                    });
+                    if ui.button("Add User").clicked() {
+                        let user = User { name: name.clone(), age: *age, email: email.clone() };
+                        let firebase_clone = firebase.clone();
+                        tokio::spawn(async move {
+                            firebase::db_operations::set_user(&firebase_clone, &user).await;
+                        });
+                    }
+                });
+            });
     }
 }

@@ -49,7 +49,7 @@ pub mod firebase;
 async fn main() {
     init_logger();
     timeouts();
-    firebase::db_initialize::db_start().await;
+    //firebase::db_initialize::db_start().await;
 
     let mut args = args();
     let (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server) = parse_arguments(

@@ -1,5 +1,5 @@
 
-use std::env;
+use std::{env, sync::Arc};
 use firebase_rs::*;
 use crate::firebase::db_operations::{User, set_user, get_users, get_user, update_user, delete_user};
 extern crate dotenv;
@@ -30,4 +30,12 @@ pub async fn db_start(){
 
     //delete_user(&firebase, &response.name).await;
     //println!("User deleted");
+}
+
+pub fn initialize_firebase() -> Arc<Firebase> {
+    dotenv().ok(); // Load environment variables
+    let firebase_key = env::var("FIREBASE_SECRET_KEY")
+                        .expect("FIREBASE_SECRET_KEY must be set");
+    let firebase = Firebase::new(&firebase_key).expect("Failed to initialize Firebase");
+    Arc::new(firebase)
 }

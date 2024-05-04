@@ -15,6 +15,13 @@ pub struct Response {
     pub name: String,
 }
 
+pub async fn add_new_user(firebase_client: &Firebase, name: String, age: u32, email: String) -> Response {
+    let user = User { name, age, email };
+    let firebase = firebase_client.at("users");
+    let response = firebase.set::<User>(&user).await;
+    string_to_response(&response.unwrap().data)
+}
+
 pub async fn set_user(firebase_client: &Firebase, user: &User) -> Response {
     let firebase = firebase_client.at("users");
     let _users = firebase.set::<User>(&user).await;
