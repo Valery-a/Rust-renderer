@@ -4,10 +4,6 @@ extern crate log;
 extern crate lazy_static;
 extern crate core;
 
-extern crate dotenv;
-use dotenv::dotenv;
-use std::env;
-
 use std::collections::HashMap;
 use fyrox_sound::context::SoundContext;
 use fyrox_sound::engine::SoundEngine;
@@ -46,51 +42,14 @@ pub mod ui;
 pub mod ui_defs;
 pub mod worldmachine;
 pub mod input;
+pub mod firebase;
 
-use serde::{ Deserialize, Serialize };
-use firebase_rs::*;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct User {
-    name: String,
-    age: u32,
-    email: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Response {
-    name: String,
-}
 #[tokio::main]
 #[allow(unused_must_use)]
 async fn main() {
-    dotenv().ok();
     init_logger();
     timeouts();
-
-    let user = User {
-        name: "mazna".to_string(),
-        age: 1337,
-        email: "megamazna".to_string(),
-    };
-    let firebase_key = env
-        ::var("FIREBASE_SECRET_KEY")
-        .expect("Expected a secret key in the environment");
-    let firebase = Firebase::new(&firebase_key).unwrap();
-
-    let response = set_user(&firebase, &user).await;
-
-    let users = get_users(&firebase).await;
-    println!("{:?}", users);
-    let mut user = get_user(&firebase, &response.name).await;
-    println!("{:?}", user);
-
-    user.email = "updated.mail@gmail.com".to_string();
-    let updated_user = update_user(&firebase, &response.name, &user).await;
-    println!("{:?}", updated_user);
-
-    //delete_user(&firebase, &response.name).await;
-    println!("User deleted");
+    firebase::db_initialize::db_start().await;
 
     let mut args = args();
     let (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server) = parse_arguments(
@@ -333,41 +292,4 @@ fn parse_arguments(args: &mut std::env::Args) -> (bool, Option<String>, bool, Op
     }
 
     (skip_intro, level_to_load, run_as_lan_server, connect_to_lan_server)
-}
-async fn set_user(firebase_client: &Firebase, user: &User) -> Response {
-    let firebase = firebase_client.at("users");
-    let _users = firebase.set::<User>(&user).await;
-    return string_to_reponse(&_users.unwrap().data);
-}
-
-async fn get_users(firebase_client: &Firebase) -> HashMap<String, User> {
-    let firebase = firebase_client.at("users");
-    let users = firebase.get::<HashMap<String, User>>().await;
-    println!("{:?}", users);
-    return users.unwrap();
-}
-
-async fn get_user(firebase_client: &Firebase, id: &String) -> User {
-    let firebase = firebase_client.at("users").at(&id);
-    let user = firebase.get::<User>().await;
-    return user.unwrap();
-}
-
-async fn update_user(firebase_client: &Firebase, id: &String, user: &User) -> User {
-    let firebase = firebase_client.at("users").at(&id);
-    let _user = firebase.update::<User>(&user).await;
-    return string_to_user(&_user.unwrap().data);
-}
-
-async fn delete_user(firebase_client: &Firebase, id: &String) {
-    let firebase = firebase_client.at("users").at(&id);
-    let _result = firebase.delete().await;
-}
-
-fn string_to_reponse(s: &str) -> Response {
-    serde_json::from_str(s).unwrap()
-}
-
-fn string_to_user(s: &str) -> User {
-    serde_json::from_str(s).unwrap()
 }
