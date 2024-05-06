@@ -440,6 +440,7 @@ fn handle_command(command: &str, player: &mut Player) -> CommandResult {
         _ => CommandResult::Failure(format!("Unknown command: {}", command)),
     }
 }
+
 static USER_INPUT: Lazy<Mutex<(String, u32, String, String)>> = Lazy::new(|| Mutex::new((String::new(), 0, String::new(), String::new())));
 
 fn firebase_admin_panel(ui: &mut Ui) {
@@ -451,30 +452,65 @@ fn firebase_admin_panel(ui: &mut Ui) {
         egui::Window::new("Firebase Admin Panel")
             .resizable(true)
             .collapsible(true)
-            .default_size(egui::vec2(400.0, 300.0))
+            .default_size(egui::vec2(500.0, 400.0))
             .show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.heading("Add New User");
+                    ui.heading("Manage Users");
                     ui.separator();
+
+                    // Input fields for user data
                     ui.horizontal(|ui| {
-                        ui.label("Name:").rect.set_width(50.0);
+                        ui.label("Name:");
                         ui.text_edit_singleline(name);
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Age:").rect.set_width(50.0);
+                        ui.label("Age:");
                         ui.add(egui::DragValue::new(age));
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Email:").rect.set_width(50.0);
+                        ui.label("Email:");
                         ui.text_edit_singleline(email);
                     });
-                    if ui.button("Add User").clicked() {
-                        let user = User { name: name.clone(), age: *age, email: email.clone() };
-                        let firebase_clone = firebase.clone();
-                        tokio::spawn(async move {
-                            firebase::db_operations::set_user(&firebase_clone, &user).await;
-                        });
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label("User ID (for Get, Update, Delete):");
+                        ui.text_edit_singleline(user_id);
+                    });
+
+                    // Buttons for CRUD operations
+                    ui.horizontal(|ui| {
+                        if ui.button("Add User").clicked() {
+                            let user = User { name: name.clone(), age: *age, email: email.clone() };
+                            let firebase_clone = firebase.clone();
+                            let user_id_clone = user_id.clone(); // Cloning user_id
+                            tokio::spawn(async move {
+                                firebase::db_operations::set_user(&firebase_clone, &user).await;
+                            });
+                        }
+                        if ui.button("Get User").clicked() {
+                            let firebase_clone = firebase.clone();
+                            let user_id_clone = user_id.clone(); // Cloning user_id
+                            tokio::spawn(async move {
+                                let user = firebase::db_operations::get_user(&firebase_clone, &user_id_clone).await;
+                                // Display the user data as JSON
+                                println!("User Retrieved: {:?}", serde_json::to_string(&user));
+                            });
+                        }
+                        if ui.button("Update User").clicked() {
+                            let user = User { name: name.clone(), age: *age, email: email.clone() };
+                            let firebase_clone = firebase.clone();
+                            let user_id_clone = user_id.clone(); // Cloning user_id
+                            tokio::spawn(async move {
+                                firebase::db_operations::update_user(&firebase_clone, &user_id_clone, &user).await;
+                            });
+                        }
+                        if ui.button("Delete User").clicked() {
+                            let firebase_clone = firebase.clone();
+                            let user_id_clone = user_id.clone(); // Cloning user_id
+                            tokio::spawn(async move {
+                                firebase::db_operations::delete_user(&firebase_clone, &user_id_clone).await;
+                            });
+                        }
+                    });
                 });
             });
     }
